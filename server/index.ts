@@ -9,6 +9,7 @@ import { effectiveSkills, eligibleRecommendations, skillGaps, trajectory } from 
 import { importFiles } from './import.js';
 import { allowEmployeeRead, allowEmployeeWrite, login, logout, requireAuth, requireRole, sameOrigin, seedDemoUsers } from './auth.js';
 import { adminRouter } from './admin.js';
+import { employeeAchievements, grantActivityAchievements, learningRecommendation, learningRouter, seedLearningContent } from './learning.js';
 import type { History } from './types.js';
 
 const app = express();
@@ -24,6 +25,7 @@ app.use('/api', requireAuth);
 app.get('/api/auth/me', (req, res) => res.json({ user: req.authUser }));
 app.post('/api/auth/logout', logout);
 app.use('/api/admin', adminRouter);
+app.use('/api', learningRouter);
 
 app.get('/api/bootstrap', async (req, res) => {
   const state = await loadState();
@@ -44,8 +46,9 @@ app.get('/api/employees/:id', allowEmployeeRead, async (req, res) => {
   const history = state.history.filter(item => item.employee_id === employee.employee_id)
     .sort((a, b) => b.date.localeCompare(a.date) || b.record_id.localeCompare(a.record_id))
     .map(item => ({ ...item, event_title: eventNames.get(item.event_id) ?? item.event_id }));
-  res.json({ employee, skills: effectiveSkills(employee, state.history, state.events),
-    trajectory: trajectory(employee, state), history, skillCatalog: state.skills });
+  res.json({ employee, skills: effectiveSkills(employee, state.history, state.events, state.learningCompletions),
+    trajectory: trajectory(employee, state), history, skillCatalog: state.skills,
+    achievements: await employeeAchievements(employee.employee_id) });
 });
 
 app.get('/api/employees/:id/recommendations', allowEmployeeRead, async (req, res) => {
@@ -58,6 +61,7 @@ app.get('/api/employees/:id/recommendations', allowEmployeeRead, async (req, res
     ? selectedIds.map(id => candidates.find(item => item.event.event_id === id)!).filter(Boolean)
     : candidates.slice(0, 3);
   res.json({ source: selectedIds ? 'openai' : 'rules', recommendations,
+    learningRecommendation: await learningRecommendation(employee, state),
     emptyReason: candidates.length ? null : skillGaps(employee, state).some(gap => gap.gap > 0)
       ? 'Нет доступных активностей, которые закрывают текущие разрывы и соответствуют условиям участия.'
       : 'Целевые требования по навыкам уже выполнены.' });
@@ -82,8 +86,9 @@ app.post('/api/employees/:id/complete', allowEmployeeWrite, async (req, res) => 
     };
     await client.query('INSERT INTO activity_history(record_id, employee_id, event_id, data) VALUES ($1, $2, $3, $4::jsonb)',
       [row.record_id, row.employee_id, row.event_id, JSON.stringify(row)]);
+    const newAchievements = await grantActivityAchievements(client, employee, { ...state, history: [...state.history, row] });
     await client.query('COMMIT');
-    res.json({ completed: row, message: 'Активность завершена. Навыки и траектория пересчитаны.' });
+    res.json({ completed: row, newAchievements, message: 'Активность завершена. Навыки и траектория пересчитаны.' });
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -143,5 +148,6 @@ app.use((error: Error, _req: express.Request, res: express.Response, _next: expr
   res.status(500).json({ error: 'Внутренняя ошибка сервера' });
 });
 
-initializeDatabase().then(seedDemoUsers).then(() => app.listen(port, () => console.log(`Career Quest: http://localhost:${port}`)))
+initializeDatabase().then(seedLearningContent).then(seedDemoUsers)
+  .then(() => app.listen(port, () => console.log(`Career Quest: http://localhost:${port}`)))
   .catch(error => { console.error('Database startup failed:', error); process.exit(1); });

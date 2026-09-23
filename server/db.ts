@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'csv-parse/sync';
 import pg from 'pg';
-import type { DataState, Employee, Event, History, RoleProfile, Skill } from './types.js';
+import type { DataState, Employee, Event, History, LearningCompletion, RoleProfile, Skill } from './types.js';
 
 if (!process.env.DATABASE_URL && !(process.env.PGHOST && process.env.PGUSER && process.env.PGPASSWORD && process.env.PGDATABASE)) {
   throw new Error('Set DATABASE_URL or PGHOST, PGUSER, PGPASSWORD and PGDATABASE. See .env.example.');
@@ -68,13 +68,16 @@ export async function initializeDatabase(): Promise<void> {
 }
 
 export async function loadState(): Promise<DataState> {
-  const [meta, employees, events, skills, profiles, history] = await Promise.all([
+  const [meta, employees, events, skills, profiles, history, learning] = await Promise.all([
     pool.query<{ value: string }>("SELECT value FROM app_meta WHERE key = 'as_of_date'"),
     pool.query<{ data: Employee }>('SELECT data FROM employees ORDER BY employee_id'),
     pool.query<{ data: Event }>('SELECT data FROM events ORDER BY event_id'),
     pool.query<{ data: Skill }>('SELECT data FROM skills ORDER BY skill_id'),
     pool.query<{ data: RoleProfile }>('SELECT data FROM role_profiles ORDER BY role, grade'),
     pool.query<{ data: History }>('SELECT data FROM activity_history ORDER BY record_id'),
+    pool.query<LearningCompletion>(`SELECT p.employee_id,p.module_id,p.effective_date::text,
+      m.skill_id,m.gain,m.max_level FROM learning_progress p JOIN learning_modules m USING(module_id)
+      WHERE p.status='completed' AND p.effective_date IS NOT NULL ORDER BY p.effective_date,p.module_id`),
   ]);
   return {
     asOf: meta.rows[0]?.value ?? '2026-10-01',
@@ -83,5 +86,6 @@ export async function loadState(): Promise<DataState> {
     skills: skills.rows.map(row => row.data),
     profiles: profiles.rows.map(row => row.data),
     history: history.rows.map(row => row.data),
+    learningCompletions: learning.rows,
   };
 }

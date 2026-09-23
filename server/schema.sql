@@ -60,3 +60,71 @@ CREATE TABLE IF NOT EXISTS user_sessions (
 );
 CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON user_sessions(user_id);
 CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON user_sessions(expires_at);
+
+-- Demo learning is kept separate from the organizer's skills/events/history dataset.
+CREATE TABLE IF NOT EXISTS learning_modules (
+  module_id text PRIMARY KEY,
+  title text NOT NULL,
+  description text NOT NULL,
+  duration_minutes integer NOT NULL CHECK (duration_minutes > 0),
+  skill_id text NOT NULL REFERENCES skills(skill_id),
+  gain integer NOT NULL CHECK (gain > 0),
+  max_level integer NOT NULL CHECK (max_level BETWEEN 1 AND 5),
+  pass_percent integer NOT NULL CHECK (pass_percent BETWEEN 1 AND 100),
+  is_active boolean NOT NULL DEFAULT true
+);
+CREATE TABLE IF NOT EXISTS learning_lessons (
+  lesson_id text PRIMARY KEY,
+  module_id text NOT NULL REFERENCES learning_modules(module_id),
+  position integer NOT NULL,
+  title text NOT NULL,
+  lead text NOT NULL,
+  points jsonb NOT NULL,
+  tip text NOT NULL,
+  UNIQUE (module_id, position)
+);
+CREATE TABLE IF NOT EXISTS quiz_questions (
+  question_id text PRIMARY KEY,
+  module_id text NOT NULL REFERENCES learning_modules(module_id),
+  position integer NOT NULL,
+  prompt text NOT NULL,
+  options jsonb NOT NULL,
+  correct_index integer NOT NULL CHECK (correct_index >= 0),
+  UNIQUE (module_id, position)
+);
+CREATE TABLE IF NOT EXISTS learning_progress (
+  employee_id text NOT NULL REFERENCES employees(employee_id),
+  module_id text NOT NULL REFERENCES learning_modules(module_id),
+  status text NOT NULL CHECK (status IN ('in_progress', 'completed')),
+  lesson_index integer NOT NULL DEFAULT 0 CHECK (lesson_index >= 0),
+  attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  score_percent integer CHECK (score_percent BETWEEN 0 AND 100),
+  started_at timestamptz NOT NULL DEFAULT now(),
+  completed_at timestamptz,
+  effective_date date,
+  PRIMARY KEY (employee_id, module_id)
+);
+CREATE TABLE IF NOT EXISTS learning_attempts (
+  attempt_id uuid PRIMARY KEY,
+  employee_id text NOT NULL REFERENCES employees(employee_id),
+  module_id text NOT NULL REFERENCES learning_modules(module_id),
+  answers jsonb NOT NULL,
+  correct_count integer NOT NULL,
+  score_percent integer NOT NULL CHECK (score_percent BETWEEN 0 AND 100),
+  passed boolean NOT NULL,
+  attempted_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS learning_attempts_employee_idx ON learning_attempts(employee_id, attempted_at DESC);
+CREATE TABLE IF NOT EXISTS achievements (
+  achievement_id text PRIMARY KEY,
+  title text NOT NULL,
+  description text NOT NULL,
+  icon text NOT NULL
+);
+CREATE TABLE IF NOT EXISTS employee_achievements (
+  employee_id text NOT NULL REFERENCES employees(employee_id),
+  achievement_id text NOT NULL REFERENCES achievements(achievement_id),
+  awarded_at timestamptz NOT NULL DEFAULT now(),
+  source text NOT NULL,
+  PRIMARY KEY (employee_id, achievement_id)
+);

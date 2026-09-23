@@ -61,6 +61,15 @@ export interface History {
   assigned_by: 'self' | 'manager' | 'hr';
 }
 
+export interface LearningCompletion {
+  employee_id: string;
+  module_id: string;
+  effective_date: string;
+  skill_id: string;
+  gain: number;
+  max_level: number;
+}
+
 export interface DataState {
   asOf: string;
   employees: Employee[];
@@ -68,6 +77,7 @@ export interface DataState {
   skills: Skill[];
   profiles: RoleProfile[];
   history: History[];
+  learningCompletions?: LearningCompletion[];
 }
 
 export interface Gap {

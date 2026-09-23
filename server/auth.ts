@@ -140,17 +140,16 @@ export function sameOrigin(req: Request, res: Response, next: NextFunction) {
 }
 
 export async function seedDemoUsers(): Promise<void> {
-  const count = await pool.query<{ count: string }>('SELECT count(*)::text AS count FROM users');
-  if (Number(count.rows[0].count) > 0) return;
   const examples: Array<{ username: string; email: string; full_name: string; role: Role; employee_id: string | null; password: string }> = [
     { username: 'admin', email: 'admin@careerquest.demo', full_name: 'Демо администратор', role: 'ADMIN', employee_id: null, password: 'DemoAdmin!2026' },
     { username: 'hr', email: 'hr@careerquest.demo', full_name: 'Демо HR', role: 'HR', employee_id: null, password: 'DemoHR!2026' },
     { username: 'employee', email: 'employee@careerquest.demo', full_name: 'Демо сотрудник', role: 'EMPLOYEE', employee_id: 'E0028', password: 'DemoEmployee!2026' },
+    { username: 'learning', email: 'learning@careerquest.demo', full_name: 'Демо обучение', role: 'EMPLOYEE', employee_id: 'E0021', password: 'DemoLearning!2026' },
   ];
   for (const user of examples) {
     await pool.query(`INSERT INTO users(id,username,email,full_name,role,employee_id,password_hash)
       VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
     [randomUUID(), user.username, user.email, user.full_name, user.role, user.employee_id, await hashPassword(user.password)]);
   }
-  console.log('Demo accounts initialized. Change their passwords before exposing this instance.');
+  console.log('Demo accounts checked. Change their passwords before exposing this instance.');
 }

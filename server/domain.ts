@@ -1,15 +1,19 @@
-import type { DataState, Employee, Event, Gap, History, Recommendation, RoleProfile } from './types.js';
+import type { DataState, Employee, Event, Gap, History, LearningCompletion, Recommendation, RoleProfile } from './types.js';
 
 const grades = ['Junior', 'Middle', 'Senior', 'Lead'] as const;
 
-export function effectiveSkills(employee: Employee, history: History[], events: Event[]): Record<string, number> {
+export function effectiveSkills(employee: Employee, history: History[], events: Event[], learning: LearningCompletion[] = []): Record<string, number> {
   const result = { ...employee.skills };
   const byEvent = new Map(events.map(event => [event.event_id, event]));
-  history
-    .filter(row => row.employee_id === employee.employee_id && row.status === 'completed' && row.date > employee.last_review_date)
-    .sort((a, b) => a.date.localeCompare(b.date) || a.record_id.localeCompare(b.record_id))
-    .forEach(row => {
-      for (const effect of byEvent.get(row.event_id)?.develops_skills ?? []) {
+  const effects = [
+    ...history.filter(row => row.employee_id === employee.employee_id && row.status === 'completed' && row.date > employee.last_review_date)
+      .map(row => ({ date: row.date, id: row.record_id, skills: byEvent.get(row.event_id)?.develops_skills ?? [] })),
+    ...learning.filter(row => row.employee_id === employee.employee_id && row.effective_date > employee.last_review_date)
+      .map(row => ({ date: row.effective_date, id: row.module_id, skills: [{ skill_id: row.skill_id, gain: row.gain, max_level: row.max_level }] })),
+  ];
+  effects.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
+    .forEach(item => {
+      for (const effect of item.skills) {
         const current = result[effect.skill_id] ?? 0;
         result[effect.skill_id] = Math.max(current, Math.min(5, effect.max_level, current + effect.gain));
       }
@@ -31,7 +35,7 @@ export function targetProfile(employee: Employee, profiles: RoleProfile[]): Role
 export function skillGaps(employee: Employee, state: DataState): Gap[] {
   const target = targetProfile(employee, state.profiles);
   if (!target) return [];
-  const current = effectiveSkills(employee, state.history, state.events);
+  const current = effectiveSkills(employee, state.history, state.events, state.learningCompletions);
   const names = new Map(state.skills.map(skill => [skill.skill_id, skill.name]));
   return Object.entries(target.required_skills)
     .map(([skill_id, required]) => ({
@@ -60,7 +64,7 @@ export function trajectory(employee: Employee, state: DataState) {
 }
 
 export function eligibleRecommendations(employee: Employee, state: DataState): Recommendation[] {
-  const current = effectiveSkills(employee, state.history, state.events);
+  const current = effectiveSkills(employee, state.history, state.events, state.learningCompletions);
   const gaps = skillGaps(employee, state).filter(gap => gap.gap > 0);
   const bySkill = new Map(gaps.map(gap => [gap.skill_id, gap]));
   const personHistory = state.history.filter(row => row.employee_id === employee.employee_id);

@@ -1,0 +1,140 @@
+import 'dotenv/config';
+import express from 'express';
+import multer from 'multer';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { rankWithOpenAI } from './ai.js';
+import { initializeDatabase, loadState, pool } from './db.js';
+import { effectiveSkills, eligibleRecommendations, skillGaps, trajectory } from './domain.js';
+import { importFiles } from './import.js';
+import type { History } from './types.js';
+
+const app = express();
+app.use(express.json({ limit: '1mb' }));
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
+const port = Number(process.env.PORT ?? 3001);
+if (!process.env.HR_ACCESS_CODE) throw new Error('HR_ACCESS_CODE is required in .env');
+
+function hrOnly(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (req.header('x-hr-code') !== process.env.HR_ACCESS_CODE) {
+    res.status(401).json({ error: 'Введите код доступа HR' });
+    return;
+  }
+  next();
+}
+
+app.get('/api/health', (_req, res) => res.json({ ok: true }));
+
+app.get('/api/bootstrap', async (_req, res) => {
+  const state = await loadState();
+  res.json({
+    asOf: state.asOf,
+    employees: state.employees.map(({ employee_id, full_name, role, grade, department }) =>
+      ({ employee_id, full_name, role, grade, department })),
+    totalEvents: state.events.length,
+  });
+});
+
+app.get('/api/employees/:id', async (req, res) => {
+  const state = await loadState();
+  const employee = state.employees.find(item => item.employee_id === req.params.id);
+  if (!employee) { res.status(404).json({ error: 'Сотрудник не найден' }); return; }
+  const eventNames = new Map(state.events.map(event => [event.event_id, event.title]));
+  const history = state.history.filter(item => item.employee_id === employee.employee_id)
+    .sort((a, b) => b.date.localeCompare(a.date) || b.record_id.localeCompare(a.record_id))
+    .map(item => ({ ...item, event_title: eventNames.get(item.event_id) ?? item.event_id }));
+  res.json({ employee, skills: effectiveSkills(employee, state.history, state.events),
+    trajectory: trajectory(employee, state), history, skillCatalog: state.skills });
+});
+
+app.get('/api/employees/:id/recommendations', async (req, res) => {
+  const state = await loadState();
+  const employee = state.employees.find(item => item.employee_id === req.params.id);
+  if (!employee) { res.status(404).json({ error: 'Сотрудник не найден' }); return; }
+  const candidates = eligibleRecommendations(employee, state);
+  const selectedIds = await rankWithOpenAI(employee, candidates);
+  const recommendations = selectedIds
+    ? selectedIds.map(id => candidates.find(item => item.event.event_id === id)!).filter(Boolean)
+    : candidates.slice(0, 3);
+  res.json({ source: selectedIds ? 'openai' : 'rules', recommendations,
+    emptyReason: candidates.length ? null : skillGaps(employee, state).some(gap => gap.gap > 0)
+      ? 'Нет доступных активностей, которые закрывают текущие разрывы и соответствуют условиям участия.'
+      : 'Целевые требования по навыкам уже выполнены.' });
+});
+
+app.post('/api/employees/:id/complete', async (req, res) => {
+  const eventId = req.body?.eventId;
+  if (typeof eventId !== 'string') { res.status(400).json({ error: 'Укажите eventId' }); return; }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const locked = await client.query('SELECT employee_id FROM employees WHERE employee_id = $1 FOR UPDATE', [req.params.id]);
+    if (!locked.rowCount) { await client.query('ROLLBACK'); res.status(404).json({ error: 'Сотрудник не найден' }); return; }
+    const state = await loadState();
+    const employee = state.employees.find(item => item.employee_id === req.params.id)!;
+    const allowed = eligibleRecommendations(employee, state).find(item => item.event.event_id === eventId);
+    if (!allowed) { await client.query('ROLLBACK'); res.status(400).json({ error: 'Активность недоступна или уже завершена' }); return; }
+    const row: History = {
+      record_id: `U_${randomUUID()}`, employee_id: employee.employee_id, event_id: eventId,
+      date: state.asOf, due_date: null, status: 'completed', completion_pct: 100,
+      score: null, feedback_rating: null, assigned_by: 'self',
+    };
+    await client.query('INSERT INTO activity_history(record_id, employee_id, event_id, data) VALUES ($1, $2, $3, $4::jsonb)',
+      [row.record_id, row.employee_id, row.event_id, JSON.stringify(row)]);
+    await client.query('COMMIT');
+    res.json({ completed: row, message: 'Активность завершена. Навыки и траектория пересчитаны.' });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally { client.release(); }
+});
+
+app.post('/api/hr/verify', hrOnly, (_req, res) => res.json({ ok: true }));
+
+app.get('/api/hr/dashboard', hrOnly, async (_req, res) => {
+  const state = await loadState();
+  const gapCounts = new Map<string, { skill_id: string; name: string; count: number; criticalCount: number }>();
+  const without: { employee_id: string; full_name: string; role: string; grade: string; gapCount: number }[] = [];
+  for (const employee of state.employees) {
+    const gaps = skillGaps(employee, state).filter(gap => gap.gap > 0);
+    for (const gap of gaps) {
+      const item = gapCounts.get(gap.skill_id) ?? { skill_id: gap.skill_id, name: gap.name, count: 0, criticalCount: 0 };
+      item.count++;
+      if (gap.critical) item.criticalCount++;
+      gapCounts.set(gap.skill_id, item);
+    }
+    if (!eligibleRecommendations(employee, state).length) without.push({
+      employee_id: employee.employee_id, full_name: employee.full_name,
+      role: employee.role, grade: employee.grade, gapCount: gaps.length,
+    });
+  }
+  const stats = state.events.map(event => {
+    const rows = state.history.filter(row => row.event_id === event.event_id);
+    const byStatus = Object.fromEntries(['completed', 'in_progress', 'no_show', 'declined', 'dropped', 'overdue']
+      .map(status => [status, rows.filter(row => row.status === status).length]));
+    return { event_id: event.event_id, title: event.title, type: event.type, mandatory: event.mandatory,
+      total: rows.length, ...byStatus };
+  }).sort((a, b) => b.total - a.total);
+  res.json({ totalEmployees: state.employees.length, totalActivities: state.events.length,
+    totalParticipation: state.history.length, withoutRecommendation: without,
+    topGaps: [...gapCounts.values()].sort((a, b) => b.count - a.count).slice(0, 12),
+    activityStats: stats });
+});
+
+app.post('/api/hr/import', hrOnly, upload.fields([{ name: 'employees', maxCount: 1 }, { name: 'history', maxCount: 1 }]), async (req, res) => {
+  const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+  const result = await importFiles(files?.employees?.[0]?.buffer, files?.history?.[0]?.buffer);
+  res.json({ ...result, message: 'Данные загружены и доступны в профиле и HR-дашборде.' });
+});
+
+app.use('/api', (_req, res) => res.status(404).json({ error: 'API endpoint не найден' }));
+const clientDir = path.resolve(process.cwd(), 'dist/client');
+app.use(express.static(clientDir));
+app.use((_req, res) => res.sendFile(path.join(clientDir, 'index.html')));
+app.use((error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error(error);
+  res.status(400).json({ error: error.message || 'Ошибка сервера' });
+});
+
+initializeDatabase().then(() => app.listen(port, () => console.log(`Career Quest: http://localhost:${port}`)))
+  .catch(error => { console.error('Database startup failed:', error); process.exit(1); });

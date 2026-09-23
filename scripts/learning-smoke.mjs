@@ -52,6 +52,9 @@ assert.ok(course.body.questions.every(question => !('correct_index' in question)
 const failed = await request(`${route}/quiz`, json({ answers: [0, 0, 0, 0, 0] }), learner);
 assert.equal(failed.status, 200);
 assert.equal(failed.body.passed, false);
+const afterFailedAttempt = await request(`/api/employees/${employeeId}`, {}, learner);
+assert.equal(afterFailedAttempt.body.skills.SK_TROUBLESHOOTING, beforeSkill);
+assert.ok(!afterFailedAttempt.body.achievements.some(item => item.achievement_id === 'DIGITAL_STARTER'));
 const passed = await request(`${route}/quiz`, json({ answers: content.questions.map(question => question.correct_index) }), learner);
 assert.equal(passed.status, 200, JSON.stringify(passed.body));
 assert.equal(passed.body.passed, true);

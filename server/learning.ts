@@ -185,14 +185,15 @@ learningRouter.post('/employees/:id/learning/:moduleId/quiz', ownerOnly, async (
   if (!Array.isArray(answers) || answers.length > 20 || !answers.every(Number.isInteger)) {
     res.status(400).json({ error: 'Ответьте на все вопросы' }); return;
   }
-  const state = await loadState();
-  const employee = state.employees.find(item => item.employee_id === req.params.id);
-  if (!employee) { res.status(404).json({ error: 'Сотрудник не найден' }); return; }
-  const beforeSkill = effectiveSkills(employee, state.history, state.events, state.learningCompletions);
-  const beforeReadiness = trajectory(employee, state).readiness;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const locked = await client.query('SELECT employee_id FROM employees WHERE employee_id=$1 FOR UPDATE', [req.params.id]);
+    if (!locked.rowCount) { await client.query('ROLLBACK'); res.status(404).json({ error: 'Сотрудник не найден' }); return; }
+    const state = await loadState();
+    const employee = state.employees.find(item => item.employee_id === req.params.id)!;
+    const beforeSkill = effectiveSkills(employee, state.history, state.events, state.learningCompletions);
+    const beforeReadiness = trajectory(employee, state).readiness;
     const moduleResult = await client.query<Module>(moduleQuery, [req.params.moduleId]);
     const module = moduleResult.rows[0];
     if (!module) { await client.query('ROLLBACK'); res.status(404).json({ error: 'Курс не найден' }); return; }

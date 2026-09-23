@@ -50,6 +50,21 @@ test('completion after the last review raises a skill once and respects max_leve
   assert.equal(effectiveSkills({ ...employee, last_review_date: '2026-10-02' }, [row], [event]).SK_SYSTEM_DESIGN, 2);
 });
 
+test('demo course completion improves the mapped skill and career readiness without modifying events', () => {
+  const employee = state.employees.find(item => item.employee_id === 'E0021')!;
+  const before = effectiveSkills(employee, state.history, state.events);
+  const completion = { employee_id: employee.employee_id, module_id: 'LM_PERIPHERALS_01',
+    effective_date: state.asOf, skill_id: 'SK_TROUBLESHOOTING', gain: 1, max_level: 3 };
+  const afterState: DataState = { ...state, learningCompletions: [completion] };
+  const after = effectiveSkills(employee, afterState.history, afterState.events, afterState.learningCompletions);
+  assert.equal(before.SK_TROUBLESHOOTING, 2);
+  assert.equal(after.SK_TROUBLESHOOTING, 3);
+  assert.ok(trajectory(employee, afterState).readiness > trajectory(employee, state).readiness);
+  assert.equal(effectiveSkills(employee, state.history, state.events, [completion, completion]).SK_TROUBLESHOOTING, 3);
+  assert.equal(effectiveSkills({ ...employee, last_review_date: '2026-10-02' }, state.history, state.events,
+    [completion]).SK_TROUBLESHOOTING, employee.skills.SK_TROUBLESHOOTING);
+});
+
 test('critical promotion gap wins over repeatedly missed presentation activities', () => {
   const employee: Employee = { ...state.employees[0], employee_id: 'JURY', role: 'Backend Engineer', grade: 'Middle',
     career_goal: { target_role: 'Backend Engineer', target_grade: 'Senior' },

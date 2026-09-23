@@ -7,35 +7,36 @@ import { rankWithOpenAI } from './ai.js';
 import { initializeDatabase, loadState, pool } from './db.js';
 import { effectiveSkills, eligibleRecommendations, skillGaps, trajectory } from './domain.js';
 import { importFiles } from './import.js';
+import { allowEmployeeRead, allowEmployeeWrite, login, logout, requireAuth, requireRole, sameOrigin, seedDemoUsers } from './auth.js';
+import { adminRouter } from './admin.js';
 import type { History } from './types.js';
 
 const app = express();
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '1mb' }));
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
 const port = Number(process.env.PORT ?? 3001);
-if (!process.env.HR_ACCESS_CODE) throw new Error('HR_ACCESS_CODE is required in .env');
-
-function hrOnly(req: express.Request, res: express.Response, next: express.NextFunction) {
-  if (req.header('x-hr-code') !== process.env.HR_ACCESS_CODE) {
-    res.status(401).json({ error: 'Введите код доступа HR' });
-    return;
-  }
-  next();
-}
-
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
+app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
+app.use('/api', sameOrigin);
+app.post('/api/auth/login', login);
+app.use('/api', requireAuth);
+app.get('/api/auth/me', (req, res) => res.json({ user: req.authUser }));
+app.post('/api/auth/logout', logout);
+app.use('/api/admin', adminRouter);
 
-app.get('/api/bootstrap', async (_req, res) => {
+app.get('/api/bootstrap', async (req, res) => {
   const state = await loadState();
   res.json({
     asOf: state.asOf,
-    employees: state.employees.map(({ employee_id, full_name, role, grade, department }) =>
+    employees: state.employees.filter(item => req.authUser?.role !== 'EMPLOYEE' || item.employee_id === req.authUser.employee_id)
+      .map(({ employee_id, full_name, role, grade, department }) =>
       ({ employee_id, full_name, role, grade, department })),
     totalEvents: state.events.length,
   });
 });
 
-app.get('/api/employees/:id', async (req, res) => {
+app.get('/api/employees/:id', allowEmployeeRead, async (req, res) => {
   const state = await loadState();
   const employee = state.employees.find(item => item.employee_id === req.params.id);
   if (!employee) { res.status(404).json({ error: 'Сотрудник не найден' }); return; }
@@ -47,7 +48,7 @@ app.get('/api/employees/:id', async (req, res) => {
     trajectory: trajectory(employee, state), history, skillCatalog: state.skills });
 });
 
-app.get('/api/employees/:id/recommendations', async (req, res) => {
+app.get('/api/employees/:id/recommendations', allowEmployeeRead, async (req, res) => {
   const state = await loadState();
   const employee = state.employees.find(item => item.employee_id === req.params.id);
   if (!employee) { res.status(404).json({ error: 'Сотрудник не найден' }); return; }
@@ -62,7 +63,7 @@ app.get('/api/employees/:id/recommendations', async (req, res) => {
       : 'Целевые требования по навыкам уже выполнены.' });
 });
 
-app.post('/api/employees/:id/complete', async (req, res) => {
+app.post('/api/employees/:id/complete', allowEmployeeWrite, async (req, res) => {
   const eventId = req.body?.eventId;
   if (typeof eventId !== 'string') { res.status(400).json({ error: 'Укажите eventId' }); return; }
   const client = await pool.connect();
@@ -89,9 +90,7 @@ app.post('/api/employees/:id/complete', async (req, res) => {
   } finally { client.release(); }
 });
 
-app.post('/api/hr/verify', hrOnly, (_req, res) => res.json({ ok: true }));
-
-app.get('/api/hr/dashboard', hrOnly, async (_req, res) => {
+app.get('/api/hr/dashboard', requireRole('ADMIN', 'HR'), async (_req, res) => {
   const state = await loadState();
   const gapCounts = new Map<string, { skill_id: string; name: string; count: number; criticalCount: number }>();
   const without: { employee_id: string; full_name: string; role: string; grade: string; gapCount: number }[] = [];
@@ -121,10 +120,18 @@ app.get('/api/hr/dashboard', hrOnly, async (_req, res) => {
     activityStats: stats });
 });
 
-app.post('/api/hr/import', hrOnly, upload.fields([{ name: 'employees', maxCount: 1 }, { name: 'history', maxCount: 1 }]), async (req, res) => {
-  const files = req.files as Record<string, Express.Multer.File[]> | undefined;
-  const result = await importFiles(files?.employees?.[0]?.buffer, files?.history?.[0]?.buffer);
-  res.json({ ...result, message: 'Данные загружены и доступны в профиле и HR-дашборде.' });
+app.post('/api/hr/import', requireRole('ADMIN', 'HR'), upload.fields([{ name: 'employees', maxCount: 1 }, { name: 'history', maxCount: 1 }]), async (req, res, next) => {
+  try {
+    const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+    const result = await importFiles(files?.employees?.[0]?.buffer, files?.history?.[0]?.buffer);
+    res.json({ ...result, message: 'Данные загружены и доступны в профиле и HR-дашборде.' });
+  } catch (error) {
+    if (error instanceof SyntaxError) { res.status(400).json({ error: 'Некорректный JSON или CSV' }); return; }
+    if (error instanceof Error && (!('code' in error) || String(error.code).startsWith('CSV_'))) {
+      res.status(400).json({ error: error.message }); return;
+    }
+    next(error);
+  }
 });
 
 app.use('/api', (_req, res) => res.status(404).json({ error: 'API endpoint не найден' }));
@@ -133,8 +140,8 @@ app.use(express.static(clientDir));
 app.use((_req, res) => res.sendFile(path.join(clientDir, 'index.html')));
 app.use((error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(error);
-  res.status(400).json({ error: error.message || 'Ошибка сервера' });
+  res.status(500).json({ error: 'Внутренняя ошибка сервера' });
 });
 
-initializeDatabase().then(() => app.listen(port, () => console.log(`Career Quest: http://localhost:${port}`)))
+initializeDatabase().then(seedDemoUsers).then(() => app.listen(port, () => console.log(`Career Quest: http://localhost:${port}`)))
   .catch(error => { console.error('Database startup failed:', error); process.exit(1); });

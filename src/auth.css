@@ -1,0 +1,54 @@
+.auth-loading{min-height:100vh;display:grid;place-items:center}
+.logout-button{width:100%;margin-top:10px;padding:10px 12px;border:1px solid #2a4554;border-radius:9px;background:#173344;color:#b7cbd3;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:9px}
+.logout-button:hover{background:#25485a;color:#fff}
+.employee-fixed{cursor:default;box-shadow:none}
+.drawer-backdrop{display:none}
+.login-page{min-height:100vh;display:grid;grid-template-columns:minmax(370px,1fr) minmax(400px,1fr);background:#f5f7fb}
+.login-art{background:linear-gradient(145deg,#0d2b3d,#175453);padding:40px 55px;color:white;display:flex;flex-direction:column;position:relative;overflow:hidden}
+.login-art:before,.login-art:after{content:"";position:absolute;border:1px solid #ffffff20;border-radius:50%;height:530px;width:530px;right:-180px;bottom:-280px}
+.login-art:after{height:360px;width:360px;right:-90px;bottom:-190px}
+.login-art .brand{padding:0;position:relative;z-index:1}
+.login-art-copy{margin:auto 0;max-width:530px;position:relative;z-index:1}
+.login-orbit{height:83px;width:83px;display:grid;place-items:center;border-radius:25px;background:#bced74;color:#153f41;margin-bottom:38px;transform:rotate(-7deg)}
+.login-orbit svg{transform:rotate(7deg)}
+.login-art-copy .eyebrow{color:#bced74}
+.login-art-copy h1{font-size:clamp(36px,4vw,64px);letter-spacing:-2.8px;line-height:1.12;margin:17px 0}
+.login-art-copy p{color:#b6d0d1;line-height:1.7;font-size:14px;max-width:400px}
+.login-art-footer{color:#8eafb2;font-size:11px;position:relative;z-index:1}
+.login-main{display:grid;place-items:center;padding:35px}
+.login-card{width:min(100%,425px);background:#fff;border:1px solid #e8edf1;border-radius:22px;padding:42px;box-shadow:0 24px 70px #20394c10;display:grid;gap:16px}
+.login-lock{width:51px;height:51px;display:grid;place-items:center;color:#537f59;background:#e9f5e3;border-radius:15px}
+.login-card h2,.admin-dialog h2{font-size:25px;letter-spacing:-.8px;margin:0}
+.login-card p,.admin-dialog p{font-size:12px;color:#8193a0;line-height:1.6;margin:-8px 0 8px}
+.login-card label,.admin-dialog label{display:grid;gap:7px;font-size:11px;font-weight:800;color:#40566a}
+.login-card input,.admin-dialog input:not([type=checkbox]),.admin-dialog select,.admin-filters select,.admin-search input{width:100%;min-width:0;border:1px solid #dce5eb;border-radius:10px;padding:12px 13px;background:#fbfcfd;color:#183345;outline:none;font-size:12px}
+.login-card input:focus,.admin-dialog input:focus,.admin-dialog select:focus,.admin-filters select:focus,.admin-search:focus-within{border-color:#8fc373;box-shadow:0 0 0 3px #cdeebc77}
+.login-card .button,.admin-dialog .button{min-height:43px;justify-content:center}
+.login-card small,.admin-dialog small{font-size:10px;color:#9aabb5;line-height:1.5}
+.admin-panel{min-width:0}
+.admin-filters{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}
+.admin-filters select{width:auto;min-width:130px;background:#fff}
+.admin-search{display:flex;align-items:center;gap:7px;border:1px solid #dce5eb;border-radius:10px;padding-left:13px;color:#8295a3;background:#fff;flex:1;min-width:200px}
+.admin-search input{border:0;background:transparent;box-shadow:none!important}
+.admin-table{min-width:690px}
+.admin-table td{vertical-align:middle}
+.admin-role{background:#edf3f6;padding:6px 9px;border-radius:7px;color:#496273;white-space:nowrap}
+.admin-status{display:inline-block;border-radius:30px;background:#f1f2f4;color:#8291a0;padding:6px 10px;white-space:nowrap}
+.admin-status.enabled{background:#e8f5e4;color:#5d9b5a}
+.admin-actions{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.admin-actions button{border:1px solid #dce7e9;background:#fff;color:#496678;border-radius:7px;padding:6px 8px;font-size:10px;font-weight:800;white-space:nowrap;display:flex;align-items:center;gap:4px}
+.admin-actions button:hover{background:#eef6eb}
+.admin-actions button:disabled{opacity:.35;cursor:not-allowed}
+.admin-notice{display:flex;align-items:center;gap:8px;margin-top:15px;padding:10px 12px;border-radius:8px;background:#edf8e7;color:#588857;font-size:11px;font-weight:700}
+.admin-notice button{margin-left:auto;border:0;background:transparent;color:inherit}
+.dialog-backdrop{position:fixed;inset:0;background:#0b223bb0;z-index:50;display:grid;place-items:center;padding:18px}
+.admin-dialog{background:#fff;width:min(100%,560px);max-height:calc(100dvh - 36px);overflow:auto;border-radius:19px;padding:25px 29px 30px;box-shadow:0 25px 80px #001c3055}
+.dialog-head{display:flex;justify-content:space-between;margin-bottom:20px}
+.dialog-head>button{border:0;background:#f1f5f6;color:#547086;height:32px;width:32px;border-radius:9px}
+.admin-dialog form{display:grid;gap:17px}
+.admin-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.admin-form-grid .form-wide{grid-column:1/-1}
+.admin-check{display:flex!important;align-items:center;gap:9px!important}
+.admin-check input{accent-color:#699e57}
+@media(max-width:900px){.drawer-backdrop{display:block;position:fixed;inset:0;background:#0920338a;border:0;z-index:19}.login-page{grid-template-columns:1fr}.login-art{min-height:230px;padding:28px 35px}.login-art-copy{margin:35px 0 15px}.login-orbit,.login-art-footer{display:none}.login-art-copy h1{font-size:34px;max-width:480px}.login-art-copy p{margin-bottom:0}.login-main{padding:35px 20px}}
+@media(max-width:600px){.login-art{min-height:205px;padding:20px}.login-art-copy{margin:27px 0 8px}.login-art-copy h1{font-size:27px;letter-spacing:-1px;margin:10px 0}.login-art-copy p{font-size:11px}.login-main{padding:17px 14px}.login-card{padding:25px 20px;gap:13px}.login-card h2{font-size:21px}.admin-filters{display:grid;grid-template-columns:1fr 1fr}.admin-search{grid-column:1/-1;min-width:0}.admin-filters select{width:100%;min-width:0}.admin-panel .panel-header{align-items:flex-start;gap:10px}.admin-panel .panel-header .button{white-space:nowrap;padding:9px}.admin-dialog{padding:20px;max-height:calc(100dvh - 20px)}.admin-form-grid{grid-template-columns:1fr}.admin-form-grid .form-wide{grid-column:1}.page-heading{min-width:0}.page-heading .pill{display:none}.panel-header{gap:10px}.panel-header h2{overflow-wrap:anywhere}.metric-grid,.hr-metrics{grid-template-columns:1fr}.progress-card{flex-wrap:wrap}.progress-ring{margin-left:auto}.journey-banner{flex-wrap:wrap}.journey-readiness{text-align:left}.import-panel form{grid-template-columns:1fr;width:100%}.import-panel form .button{grid-column:1}.rec-meta{flex-wrap:wrap}.recommendation-card{min-width:0}.toast{overflow-wrap:anywhere}}

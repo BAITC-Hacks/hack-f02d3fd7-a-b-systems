@@ -10,6 +10,7 @@ import App from './App';
 import './styles.css';
 import './auth.css';
 import './learning.css';
+import './branding.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode><App /></React.StrictMode>,

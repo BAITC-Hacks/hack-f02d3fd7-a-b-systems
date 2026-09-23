@@ -1,0 +1,90 @@
+/* Halyk assets stay unmodified in public/brand; these rules style the product around them. */
+:root{color:#193d35;background:#f5f9f7}
+body{background:#f5f9f7}
+.brand-lockup{display:flex;flex-direction:column;align-items:flex-start;min-width:0;line-height:1.2}
+.brand-lockup img{display:block;width:153px;height:auto;max-width:100%}
+.brand-product{font-family:'DM Sans',sans-serif;font-size:18px;font-weight:700;letter-spacing:-.5px;line-height:1.15;margin-top:-1px}
+.brand-caption{font-size:9px;font-weight:700;letter-spacing:.2px;margin-top:4px}
+.sidebar{background:linear-gradient(175deg,#00644e,#004c3e 85%);color:#fff}
+.sidebar>.brand-lockup{padding:0 15px 35px}
+.sidebar .brand-product{color:#fff}
+.sidebar .brand-caption{color:#abd5c7}
+.sidebar-label{color:#a7d3c3}
+.nav-list button{color:#d0e7de}
+.nav-list button:hover{background:#ffffff1c;color:#fff}
+.nav-list button.active{background:#ffffff25;color:#fff}
+.nav-indicator{background:#b7e1cb}
+.mini-orbit{border-color:#ffffff2b;background:#ffffff12;color:#e6f6ef}
+.mini-orbit svg{background:#ffffff1c;color:#e3f3eb}
+.sidebar-profile{border-top-color:#ffffff36}
+.sidebar-profile small{color:#b7d7ca}
+.avatar.small{background:#d6eee3;color:#00644e}
+.logout-button{border-color:#ffffff42;background:#ffffff14;color:#e4f4ed}
+.logout-button:hover{background:#ffffff2b;color:#fff}
+.workspace{background:#f5f9f7}
+.topbar{border-bottom-color:#e0eae5}
+.mobile-brand{display:none}
+.menu-button{color:#00684f}
+.breadcrumb strong,.page-heading h1{color:#203d36}
+.heading-dot{color:#00896b}
+.eyebrow,.page-heading .eyebrow{color:#00896b}
+.profile-card,.panel,.metric-card{border-color:#e1ebe5}
+.progress-card{background:linear-gradient(120deg,#00674f,#004b3e 88%)}
+.progress-card .eyebrow,.journey-banner .eyebrow,.learning-hero .eyebrow{color:#bbebd5}
+.progress-card p,.progress-stats span,.journey-banner p,.learning-hero p{color:#d0e8df}
+.progress-ring>div{background:#005644}
+.text-link{color:#d6f2e4}
+.journey-banner{background:linear-gradient(115deg,#006b52,#00513f)}
+.journey-banner h2 svg{color:#bdebd5}
+.learning-hero{background:linear-gradient(115deg,#007257,#00513f)}
+.learning-hero-meta svg{color:#bdebd5}
+.learning-hero-mark,.login-orbit{background:#e1f4e9;color:#007054}
+.learning-step-count{background:#e7f5ed;color:#006e53}
+.learning-progress-track span{background:linear-gradient(90deg,#00896b,#44b28a)}
+.learning-outline-item.current>span{background:#bce8d2;color:#005a43}
+.quiz-options label.selected{border-color:#00896b;background:#edf8f2;color:#005d47}
+.quiz-options input,.admin-check input{accent-color:#00896b}
+.button.primary{background:#00896b;color:#fff}
+.button.primary:hover{background:#006e55;color:#fff}
+.button.primary:active{background:#005b47}
+.complete-button{background:#00785c;color:#fff}
+.complete-button:hover{background:#005f49}
+.button:focus-visible,.nav-list button:focus-visible,.menu-button:focus-visible,.logout-button:focus-visible,.admin-actions button:focus-visible,.employee-switcher:focus-visible{outline:3px solid #56bd91;outline-offset:2px}
+.login-page{background:#f5f9f7}
+.login-art{background:linear-gradient(145deg,#006c52,#004738)}
+.login-art>.brand-lockup{position:relative;z-index:1}
+.login-art .brand-lockup img{width:165px}
+.login-art .brand-product{font-size:25px;color:#fff;margin-top:2px}
+.login-art .brand-caption{font-size:11px;color:#cce9dc;margin-top:6px}
+.login-art-copy .eyebrow{color:#bdebd5}
+.login-art-copy p{color:#d2e8df}
+.login-art-footer{color:#bbdcd0}
+.login-card{border-color:#dfece5}
+.login-lock{color:#007557;background:#e2f4e9}
+.login-card input:focus,.admin-dialog input:focus,.admin-dialog select:focus,.admin-filters select:focus,.admin-search:focus-within{border-color:#00896b;box-shadow:0 0 0 3px #00896b26}
+.achievement-halo{background:linear-gradient(145deg,#d5f0df,#93d6b6);color:#006a51;box-shadow:0 0 0 10px #edf8f2}
+.achievement-dialog .eyebrow{color:#00896b}
+.achievement-stats strong{color:#00684f}
+.learning-recommendation{border-color:#cfe9d8;background:linear-gradient(110deg,#f9fdfa,#eaf7ef)}
+.learning-recommendation-icon{background:#d9f0e3;color:#007558}
+.learning-recommendation-copy>div span{color:#007257}
+.achievement-badge>span,.admin-catalog-icon{background:#e0f2e8;color:#007558}
+.admin-actions button:hover{background:#ebf7f0}
+@media(max-width:900px){
+  .mobile-brand{display:block;flex:1;min-width:0}
+  .mobile-brand .brand-lockup{flex-direction:row;align-items:center;gap:9px}
+  .mobile-brand img{width:94px;flex:none}
+  .mobile-brand .brand-product{font-size:13px;margin:0;color:#00684f;white-space:nowrap}
+  .topbar .breadcrumb{display:none}
+  .topbar .top-actions{margin-left:auto}
+}
+@media(max-width:600px){
+  .topbar{gap:9px}
+  .topbar .top-actions{gap:8px}
+  .mobile-brand .brand-lockup{gap:6px}
+  .mobile-brand img{width:84px}
+  .mobile-brand .brand-product{font-size:12px}
+  .login-art .brand-lockup img{width:120px}
+  .login-art .brand-product{font-size:20px;margin-top:-1px}
+  .login-art .brand-caption{font-size:9px;margin-top:3px}
+}

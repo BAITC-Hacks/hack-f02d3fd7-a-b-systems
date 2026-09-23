@@ -7,7 +7,6 @@
 .login-art{background:linear-gradient(145deg,#0d2b3d,#175453);padding:40px 55px;color:white;display:flex;flex-direction:column;position:relative;overflow:hidden}
 .login-art:before,.login-art:after{content:"";position:absolute;border:1px solid #ffffff20;border-radius:50%;height:530px;width:530px;right:-180px;bottom:-280px}
 .login-art:after{height:360px;width:360px;right:-90px;bottom:-190px}
-.login-art .brand{padding:0;position:relative;z-index:1}
 .login-art-copy{margin:auto 0;max-width:530px;position:relative;z-index:1}
 .login-orbit{height:83px;width:83px;display:grid;place-items:center;border-radius:25px;background:#bced74;color:#153f41;margin-bottom:38px;transform:rotate(-7deg)}
 .login-orbit svg{transform:rotate(7deg)}

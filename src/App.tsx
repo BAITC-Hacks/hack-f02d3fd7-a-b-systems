@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { api, type AuthUser } from './api';
 import { LoginPage } from './LoginPage';
+import { BrandLockup } from './Brand';
 import { AdminPanel } from './AdminPanel';
 import { LearningPage, type Achievement } from './LearningPage';
 import { HRLearningPanel } from './HRLearningPanel';
@@ -165,7 +166,7 @@ function CareerWorkspace({ user, onLogout }: { user: AuthUser; onLogout: () => v
 
   return <div className="shell">
     <aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}>
-      <div className="brand"><div className="brand-mark"><Compass size={24} strokeWidth={2.4} /></div><div><strong>career<span>quest</span></strong><small>YOUR GROWTH COMPASS</small></div></div>
+      <BrandLockup inverse />
       <div className="sidebar-label">WORKSPACE</div>
       <nav className="nav-list">
         <button className={view === 'overview' ? 'active' : ''} onClick={() => changeView('overview')}><LayoutDashboard size={19} /> Обзор <span className="nav-indicator" /></button>
@@ -186,6 +187,7 @@ function CareerWorkspace({ user, onLogout }: { user: AuthUser; onLogout: () => v
     <div className="workspace">
       <header className="topbar">
         <button className="menu-button" onClick={() => setMobileMenu(!mobileMenu)} aria-label="Меню">{mobileMenu ? <X size={22} /> : <Menu size={22} />}</button>
+        <div className="mobile-brand"><BrandLockup compact /></div>
          <div className="breadcrumb">Рабочее пространство <span>/</span> <strong>{view === 'admin' ? 'Администрирование' : view === 'hr' ? 'HR аналитика' : view === 'learning' ? 'Обучение' : view === 'journey' ? 'Моя траектория' : view === 'history' ? 'История активностей' : 'Обзор'}</strong></div>
          <div className="top-actions"><span className="snapshot"><span className="live-dot" /> Срез данных · {dateLabel(asOf)}</span><div className="avatar top-avatar">{initials(user.full_name)}</div></div>
       </header>

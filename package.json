@@ -7,7 +7,8 @@
     "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:client\"",
     "dev:server": "tsx watch server/index.ts",
     "dev:client": "vite --host 0.0.0.0",
-    "build": "tsc -p tsconfig.server.json && vite build",
+    "build": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json && vite build",
+    "migrate": "node dist/server/migrate.js",
     "start": "node dist/server/index.js",
     "test": "tsx --test server/domain.test.ts server/ai.test.ts"
   },

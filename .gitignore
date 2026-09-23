@@ -6,6 +6,8 @@ node_modules/
 dist/
 *.log
 logs/
+backups/
+.deploy-previous-revision
 .DS_Store
 Thumbs.db
 .idea/

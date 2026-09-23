@@ -10,8 +10,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/server/schema.sql ./dist/server/schema.sql
-COPY --from=build /app/data ./data
+COPY --chown=node:node --from=build /app/dist ./dist
+COPY --chown=node:node --from=build /app/server/schema.sql ./dist/server/schema.sql
+COPY --chown=node:node --from=build /app/data ./data
+USER node
 EXPOSE 3001
-CMD ["npm", "run", "start"]
+CMD ["node", "dist/server/index.js"]

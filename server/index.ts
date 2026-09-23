@@ -20,7 +20,14 @@ app.set('trust proxy', 1);
 app.use(express.json({ limit: '1mb' }));
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
 const port = Number(process.env.PORT ?? 3001);
-app.get('/api/health', (_req, res) => res.json({ ok: true }));
+app.get('/api/health', async (_req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({ ok: true, database: 'ready' });
+  } catch {
+    res.status(503).json({ ok: false, database: 'unavailable' });
+  }
+});
 app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
 app.use('/api', sameOrigin);
 app.post('/api/auth/login', login);

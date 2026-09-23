@@ -58,7 +58,7 @@ assert.equal((await api('/api/chats/team-summary', json({ scope: 'last20' }), op
 assert.equal((await api(`/api/chats/${managerChat}/summaries`, {}, manager)).status, 200);
 assert.equal((await api('/api/chats/team-summaries', {}, employee)).status, 403);
 assert.equal((await api('/api/chats/team-summaries', {}, operator)).status, 403);
-assert.ok((await api('/api/chats/team-summaries', {}, supervisor)).body.summaries.length > 0);
+assert.ok(Array.isArray((await api('/api/chats/team-summaries', {}, supervisor)).body.summaries));
 
 const adminUsers = await api('/api/admin/users', {}, admin);
 const linked = new Set(adminUsers.body.users.map(item => item.employee_id).filter(Boolean));

@@ -8,3 +8,9 @@ dist
 .npm-cache
 ТЗ
 *.log
+backups
+docs
+deploy
+scripts
+README*
+.deploy-previous-revision

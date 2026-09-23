@@ -1,14 +1,59 @@
-# Career Quest
+# Halyk Career Quest
 
-Career Quest — демонстрационная AI-платформа развития сотрудников, разработанная для кейса Halyk Bank на HackAlem AI. Сотрудник видит профиль, навыки, историю и траекторию до следующего грейда; система предлагает 1–3 доступные активности с объяснением. HR анализирует разрывы и участие, администратор управляет учетными записями. В приложении есть корпоративные чаты, AI-сводки рабочих обсуждений и журнал изменений. Исходные данные синтетические.
+Сотрудники часто получают разрозненные уведомления об обучении и не видят, как конкретная активность помогает перейти к следующему грейду. **Halyk Career Quest** превращает требования роли, skill gaps и историю участия в понятную карьерную траекторию и 1–3 объяснимых следующих шага. Сотрудник может пройти короткое обучение, сдать тест и увидеть рост навыка и готовности. HR и руководитель видят прогресс команды; рабочие чаты получают краткие AI-сводки.
+
+Это демонстрационный продукт команды **A&B Systems** для кейса **Halyk Bank** на **HackAlem AI**. Исходные HR-данные синтетические. OpenAI помогает ранжировать допустимые карьерные мероприятия и составлять сводки доступных пользователю сообщений; правила допуска, пересчёт навыков и проверка прав выполняются на backend.
+
+```text
+Employee → Skill Gap Analysis → AI Recommendation → Learning Activity → Quiz
+         → Achievement → Skill Progress → Career Readiness → HR / Manager Analytics
+
+Corporate Chat → OpenAI AI Summary → Manager / HR / Supervisor
+```
+
+## Что умеет продукт
+
+- Карьерная траектория до следующего грейда, critical skills и skill gaps.
+- 1–3 объяснимых рекомендации с учётом грейда, prerequisites, развиваемых навыков и истории участия; mandatory/compliance исключаются.
+- Демо-курс из четырёх уроков и пяти вопросов, пересчёт навыка, готовности и достижение после успешного quiz.
+- HR Analytics, импорт проверочных `employees.json` и `activity_history.csv`.
+- ADMIN/HR/EMPLOYEE и бизнес-роли с проверкой RBAC в API; панель администратора.
+- Личный профиль, аватар, история входов, кадровое редактирование и журнал аудита.
+- Личные и групповые корпоративные чаты, read/unread, OpenAI-сводки для уполномоченных ролей.
+- Адаптивный интерфейс для desktop, tablet и смартфона шириной от 360px.
+
+## Technology Stack
+
+| Слой | Реальная технология |
+|---|---|
+| Frontend | React 19, Vite 7, TypeScript, CSS, Lucide icons |
+| Backend / API | Node.js 22, Express 5, TypeScript |
+| Database | PostgreSQL 16 (`pg`), возможен Supabase PostgreSQL |
+| AI | OpenAI Responses API (`gpt-4.1-mini` по умолчанию) |
+| Auth | Серверные сессии в PostgreSQL, `HttpOnly` cookie, salted `scrypt` |
+| Обновление чатов | Polling каждые 5 секунд |
+| Infrastructure | Multi-stage Dockerfile, Docker Compose, Nginx reverse proxy на VPS |
+
+## Architecture
+
+```mermaid
+flowchart LR
+  Browser[Browser / React SPA] -->|Same-origin /api + HttpOnly cookie| API[Express API / RBAC]
+  API -->|SQL: users, events, progress, chats, audit| DB[(PostgreSQL persistent volume)]
+  API -->|Допустимый shortlist и краткий контекст| AI[OpenAI Responses API]
+  API -->|Статические файлы React| Browser
+  Proxy[Nginx / HTTPS] -->|127.0.0.1:3000| API
+```
+
+Backend детерминированно вычисляет skill gaps, правила допуска к мероприятиям, `gain/max_level`, готовность и все ограничения RBAC. В OpenAI уходит только shortlist подходящих мероприятий либо ограниченное окно сообщений после проверки доступа. Весь датасет модели не передаётся. Без ключа карьерные рекомендации продолжают работать по правилу ранжирования; AI-сводки показывают явную ошибку настройки вместо выдуманного результата.
 
 ## Брендинг Halyk
 
 Логотипы и favicon сохранены без изменения из HTML и assets [официального сайта Halyk](https://halykbank.kz/ru): [основной логотип](https://halykbank.kz/storage/app/uploads/public/6a5/75a/f7a/6a575af7a9880610279451.svg), [белый логотип](https://halykbank.kz/themes/halyk/assets/images/logo-w.svg), [SVG favicon](https://halykbank.kz/themes/halyk/assets/favicon/favicon.svg) и [ICO favicon](https://halykbank.kz/themes/halyk/assets/favicon/favicon.ico). Локальные копии находятся в `public/brand/`, чтобы интерфейс и вкладка браузера работали после clone без обращения к сайту банка. Товарные знаки и бренд-материалы Halyk принадлежат их правообладателю и используются в рамках hackathon demo.
 
-## Быстрый запуск после clone
+## QUICK START — запуск после clone
 
-Нужны Docker Desktop / Docker Engine с Compose и свободный порт `3000`.
+Нужны Docker Desktop либо Docker Engine с Compose и свободный локальный порт `3000`. Docker сам поднимет PostgreSQL с постоянным volume; Node.js на машине не нужен.
 
 ```bash
 git clone https://github.com/BAITC-Hacks/hack-f02d3fd7-a-b-systems.git
@@ -16,26 +61,36 @@ cd hack-f02d3fd7-a-b-systems
 cp .env.example .env
 docker compose up --build -d
 docker compose ps
+curl http://localhost:3000/api/health
 ```
 
-В PowerShell используйте `Copy-Item .env.example .env` вместо `cp`. Откройте **http://localhost:3000** и войдите в один из демо-аккаунтов ниже. Для локального показа шаблонный `POSTGRES_PASSWORD` работает сразу; перед публикацией приложения поменяйте его и пароли демо-аккаунтов. `.env` исключен из Git. Остановить сервисы: `docker compose down` (данные остаются в Docker volume). Для чистой демонстрационной базы: `docker compose down -v`, затем `docker compose up --build -d` — это удаляет данные текущего Compose volume.
+В PowerShell используйте `Copy-Item .env.example .env`, а для проверки `curl.exe http://localhost:3000/api/health`. Откройте **http://localhost:3000**. Ответ health должен содержать `"ok":true,"database":"ready"`. Для локального показа шаблонный пароль БД работает сразу; **на VPS замените его до запуска**. `.env` исключён из Git. `docker compose down` сохраняет данные; `docker compose down -v` удаляет volume и все внесённые изменения.
 
 При старте сервер применяет `server/schema.sql` и, если БД пуста, импортирует 200 сотрудников, 40 событий, 60 навыков, 32 профиля ролей и 2743 записи участия. Учетные записи и пять демонстрационных чатов создаются при первом запуске даже при обновлении ранее созданной БД. Повторный запуск сохраняет профили, пользователей, сообщения, аудит и историю.
 
+## Проверка за 5 минут
+
+1. **Employee / `learning`:** войдите с паролем из таблицы ниже. Откройте обзор, skill gaps, траекторию и рекомендованное обучение. Пройдите четыре урока и quiz (4 из 5 верных ответов). Проверьте **Digital Starter**, рост Technical Troubleshooting `2 → 3` и готовности `69% → 71%` на чистой БД.
+2. **Manager / `manager`:** откройте «Команда» и «Чаты» → «Команда Backend Development». Нажмите «Сделать AI-сводку» и проверьте темы, задачи и открытые вопросы. Требуется `OPENAI_API_KEY`; сохранённая сводка появляется снова после входа.
+3. **HR / `hr`:** откройте HR Analytics, частые разрывы, сотрудников без следующего шага и результаты обучения `E0021`. В «Команда» проверьте кадровые поля.
+4. **ADMIN / `admin`:** откройте «Администрирование», список и роли пользователей, затем «Журнал аудита». Попробуйте поиск и фильтры.
+
+После прохождения курса учётная запись `learning` останется в статусе completed: прогресс хранится в PostgreSQL. Для повторения с исходного состояния используйте новую БД или отдельный Docker Compose project.
+
 ## DEMO ACCOUNTS
 
-Это **публичные демонстрационные** пароли, предназначенные только для локального стенда. Введите логин **или** email и пароль на странице входа.
+Это **публичные демонстрационные** пароли для проверочного стенда. Введите логин **или** email и пароль на странице входа. Они не являются данными доступа к VPS или production-инфраструктуре.
 
-| Role | Login/Email | Password | Permissions |
+| System / business role | Login | Password | Что проверить |
 |---|---|---|---|
-| ADMIN | `admin` / `admin@careerquest.demo` | `DemoAdmin!2026` | Все сотрудники, рекомендации, завершение активностей, HR Analytics, импорт и управление пользователями |
-| HR | `hr` / `hr@careerquest.demo` | `DemoHR!2026` | Все сотрудники, траектории и рекомендации, HR Analytics и импорт; без изменения активности и без управления пользователями |
-| EMPLOYEE | `employee` / `employee@careerquest.demo` | `DemoEmployee!2026` | Только собственный профиль `E0028`, навыки, история, траектория, рекомендации и завершение своих активностей |
-| EMPLOYEE · Demo Learning | `learning` / `learning@careerquest.demo` | `DemoLearning!2026` | Собственный профиль `E0021` и полный учебный сценарий с quiz, ростом навыка и achievement |
-| EMPLOYEE · Руководитель | `manager` / `manager@careerquest.demo` | `DemoManager!2026` | Собственная траектория, команда прямого подчинения, рабочие чаты и AI-сводка обсуждения |
-| EMPLOYEE · Оператор | `operator` / `operator@careerquest.demo` | `DemoOperator!2026` | Собственный профиль, диалоги с клиентом и супервизором |
-| EMPLOYEE · Супервизор | `supervisor` / `supervisor@careerquest.demo` | `DemoSupervisor!2026` | Команда контакт-центра, чтение рабочих диалогов операторов, AI-сводка обращений |
-| EMPLOYEE · Клиент | `client` / `client@careerquest.demo` | `DemoClient!2026` | Только собственный профиль и диалоги с операторами; без HR-профиля |
+| ADMIN / COMPANY_EMPLOYEE | `admin` | `DemoAdmin!2026` | Пользователи, роли, полный аудит, HR Analytics |
+| HR / HR_SPECIALIST | `hr` | `DemoHR!2026` | HR Analytics, импорт, кадровые изменения, результаты обучения |
+| EMPLOYEE / COMPANY_EMPLOYEE | `employee` | `DemoEmployee!2026` | Собственный профиль `E0028`, рекомендации, траектория, чат |
+| EMPLOYEE / COMPANY_EMPLOYEE | `learning` | `DemoLearning!2026` | Курс `E0021`, quiz, skill progress, achievement |
+| EMPLOYEE / DEPARTMENT_MANAGER | `manager` | `DemoManager!2026` | Подчинённые, рабочий чат, AI-сводка |
+| EMPLOYEE / CONTACT_OPERATOR | `operator` | `DemoOperator!2026` | Диалог с клиентом и супервизором |
+| EMPLOYEE / CONTACT_SUPERVISOR | `supervisor` | `DemoSupervisor!2026` | Диалоги команды и общая AI-сводка обращений |
+| EMPLOYEE / CONTACT_CLIENT | `client` | `DemoClient!2026` | Только собственные чаты с оператором и профиль |
 
 Пароли хранятся в PostgreSQL как salted `scrypt`-хеши; исходный текст в БД не сохраняется. Администратор может изменить пароль через панель. Демо-пароли нужно заменить перед доступом с других машин.
 
@@ -48,6 +103,21 @@ docker compose ps
 После успешного входа браузер получает серверную сессию в `HttpOnly`, `SameSite=Strict` cookie. Сессия действует 7 дней и сохраняется при перезагрузке. «Выйти» внизу меню удаляет сессию на сервере. Деактивация, изменение роли/связи и смена пароля также завершают текущие сессии пользователя. У неавторизованных запросов к приватному API ответ `401`; для недостаточной роли — `403`. React скрывает недоступные разделы, но права проверяет сам Express для каждого запроса. Сессии хранятся в PostgreSQL, cookie содержит случайный токен, в БД хранится только SHA-256 токена. Для HTTPS cookie получает флаг `Secure`; запросы с чужим `Origin` на изменение данных отклоняются.
 
 Учетная запись в `users` и HR-профиль в `employees` — разные сущности. Поле `users.employee_id` может быть пустым у ADMIN, HR и внешнего клиента контакт-центра. Для остальных EMPLOYEE связь обязательна и уникальна. Два пользователя не могут ссылаться на один employee. Импорт сотрудника сам по себе не создает учетную запись.
+
+### Roles & Security — матрица прав
+
+| Feature | Employee | Manager | HR | Operator | Supervisor | Admin |
+|---|---|---|---|---|---|---|
+| Собственный профиль и активность | ✓ | ✓ | Профиль | ✓ | ✓ | ✓ |
+| Карьерные данные других | — | Прямые подчинённые | Все | — | Прямые подчинённые | Все |
+| HR Analytics и импорт | — | — | ✓ | — | — | ✓ |
+| Кадровое редактирование | — | — | ✓ | — | — | ✓ |
+| Личные/групповые чаты | ✓ | ✓ | ✓ | ✓ | ✓ | Клиенты только с операторами |
+| AI-сводка доступного чата | — | ✓ | ✓ | — | ✓ | ✓ |
+| Журнал аудита | Свои безопасные поля | Свои безопасные поля | Кадровые поля | Свои безопасные поля | Свои безопасные поля | Все события |
+| Управление пользователями и ролями | — | — | — | — | — | ✓ |
+
+Роль проверяется на сервере для каждого запроса к профилю, сотруднику, чату, AI-сводке и административному действию; скрытие кнопки в React не считается защитой. Пароли хранятся как salted `scrypt`, сессии — в PostgreSQL, cookie `HttpOnly`/`SameSite=Strict` и `Secure` за корректно настроенным HTTPS proxy. Запросы на запись с чужим `Origin` отклоняются. Секреты берутся из локального `.env` и не передаются React; `.env` исключён из Git и Docker build context.
 
 ### Проверка под каждой ролью
 
@@ -129,7 +199,16 @@ node scripts/learning-smoke.mjs
 
 При наличии `OPENAI_API_KEY` backend отправляет только допустимый shortlist в [OpenAI Responses API](https://developers.openai.com/api/docs/guides/structured-outputs). Ответ модели сверяется с допустимыми ID. Без ключа или при ошибке OpenAI используется прозрачное правило ранжирования; UI показывает «Умный подбор» вместо «OpenAI recommendation». Объяснение строится из проверенных данных. OpenAI-ключ никогда не передается frontend.
 
-## Архитектура и структура
+## AI Architecture
+
+| Функция | Что считает backend | Что получает OpenAI | Поведение без ключа |
+|---|---|---|---|
+| AI Career Recommendation | Следующий грейд, skill gaps, critical skills, история, prerequisites и допустимые события | Короткий список уже допустимых event ID для ранжирования; результат проверяется по whitelist | Backend возвращает 1–3 шага по воспроизводимому правилу |
+| AI Chat Summary | RBAC на чат и сообщения, период/лимит до 50 сообщений, удаление возможных секретов | Только разрешённый краткий контекст; JSON с темами, решениями, задачами и вопросами | Endpoint отвечает `503`; фиктивная сводка не создаётся |
+
+Исходные 200 employee-профилей, каталог навыков и полная история чатов не отправляются в LLM. Ключ `OPENAI_API_KEY` читается только сервером. Для сводок используется `store:false`, результаты и охваченный период записываются в PostgreSQL. AI-вывод следует сверять с исходными сообщениями; оценок сотрудников и рейтингов система не формирует.
+
+## Структура проекта
 
 ```text
 React + Vite + TypeScript (5173 в dev, :3000 в Docker)
@@ -167,18 +246,22 @@ Express + TypeScript (:3001)
 | `scripts/social-smoke.mjs` | Проверка семи демо-ролей, личных и кадровых полей, чатов, аудита и истории входов |
 | `compose.yaml`, `Dockerfile` | Docker запуск приложения и БД |
 
-## PostgreSQL, Supabase и переменные окружения
+## Environment Variables и PostgreSQL
 
 Для Docker Compose достаточно `.env`, созданного из `.env.example`; `POSTGRES_PASSWORD` нужен контейнеру базы. Compose передает приложению `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`. Для локального или Supabase PostgreSQL задайте `DATABASE_URL` в своем `.env`.
 
-| Переменная | Назначение |
-|---|---|
-| `POSTGRES_PASSWORD` | Пароль локальной Docker БД; замените шаблон перед публичным запуском |
-| `DATABASE_URL` | Строка подключения внешней/локальной PostgreSQL вне Compose |
-| `PORT` | Backend, по умолчанию `3001` |
-| `APP_ORIGIN` | Разрешенный Origin для dev frontend (`http://localhost:5173`); в Docker не передается |
-| `OPENAI_API_KEY` | Необязателен для карьерного подбора; необходим для реальных AI-сводок чатов |
-| `OPENAI_MODEL` | Модель, по умолчанию `gpt-4.1-mini` |
+| Variable | Required | Purpose | Example (без настоящих секретов) |
+|---|---|---|---|
+| `POSTGRES_PASSWORD` | Docker Compose | Пароль PostgreSQL и подключения backend | `replace_with_local_password` только для локального демо |
+| `DATABASE_URL` | Только запуск вне Compose | PostgreSQL/Supabase URI | Пусто в `.env.example`; заполнить локально |
+| `APP_BIND_HOST` | Нет | Интерфейс, на котором опубликован контейнер | `127.0.0.1` |
+| `APP_PORT` | Нет | Локальный порт reverse proxy upstream | `3000` |
+| `PORT` | Только запуск без Docker | Порт Node.js | `3001` |
+| `APP_ORIGIN` | Production | Разрешённый HTTPS origin для записи через API | `https://careerquest.absystems.kz` |
+| `OPENAI_API_KEY` | Только для реальных AI-сводок | OpenAI credential только на backend | Пусто; значение хранить лишь в серверном `.env` |
+| `OPENAI_MODEL` | Нет | Модель Responses API | `gpt-4.1-mini` |
+
+На VPS задайте длинный случайный `POSTGRES_PASSWORD` до первой инициализации volume и `APP_ORIGIN=https://careerquest.absystems.kz`. Изменение строки пароля в `.env` **после** создания БД само по себе не меняет пароль уже существующего PostgreSQL-пользователя. `.env.example` содержит только безопасные заглушки. Ключ OpenAI не нужен для запуска, детерминированной карьерной рекомендации, обучения и HR Analytics.
 
 Для Supabase: создайте проект, возьмите PostgreSQL URI в настройках Database и поместите его **только** в локальный `DATABASE_URL` (используйте Session Pooler, если требуется сетью). Пароль URI должен быть URL-кодирован при специальных символах. Приложение использует Supabase как PostgreSQL; Supabase service key не нужен. Схема из `server/schema.sql` применяется автоматически при запуске, после нее импортируются исходные файлы и отдельный demo learning content. Повторный запуск не стирает попытки, статусы и достижения. В SQL Editor Supabase можно выполнить содержимое `server/schema.sql` заранее, но приложение сделает это само.
 
@@ -203,9 +286,120 @@ npm start
 
 Приложение доступно на `http://localhost:3001`. Пустую БД можно предварительно инициализировать командой `psql "$DATABASE_URL" -f server/schema.sql`, но при обычном запуске миграция и seed выполняются автоматически. После обновления существующего стенда новые таблицы профилей, чатов и аудита создаются без удаления старых HR-данных.
 
-## Дополнительные данные жюри
+## Production Deployment — Ubuntu VPS
 
-HR или ADMIN → «HR аналитика» → «Загрузить проверочные данные». Можно выбрать один или оба файла. `employees.json` принимает `{ "employees": [...] }` или массив профилей; CSV содержит 10 исходных колонок. Если история ссылается на нового сотрудника, загрузите оба файла вместе. Совпадающие `employee_id`/`record_id` обновляются, новые добавляются; неизвестные навыки, роли и мероприятия отклоняются. Лимит каждого файла — 8 МБ. Форматы подробно описаны в `data/README.ru.md` (есть английская и казахская версии). После импорта новый HR-профиль доступен ADMIN/HR; чтобы сотрудник сам вошел, ADMIN создает отдельную учетную запись и привязывает ее к этому ID.
+Адрес приложения: **https://careerquest.absystems.kz**. Предполагается Ubuntu VPS с Docker Engine, Compose plugin, Nginx и доступом VPS к **приватному** GitHub-репозиторию (например, read-only deploy key). [Официальная инструкция Docker для Ubuntu](https://docs.docker.com/engine/install/ubuntu/) описывает установку Engine и Compose plugin. Эти команды выполняются **на VPS после SSH-входа**; адрес SSH, пароль, private deploy key и OpenAI-ключ не записывайте в репозиторий. DNS приложение не меняет.
+
+### 1. Clone и серверный `.env`
+
+```bash
+git clone git@github.com:BAITC-Hacks/hack-f02d3fd7-a-b-systems.git
+cd hack-f02d3fd7-a-b-systems
+cp .env.example .env
+chmod 600 .env
+nano .env
+```
+
+Доступ к приватному репозиторию нужно выдать VPS до `git clone`; публикуйте на GitHub только **публичную** часть deploy key. В `.env` замените заглушку `POSTGRES_PASSWORD` на новый случайный пароль, задайте `APP_ORIGIN=https://careerquest.absystems.kz`, оставьте `APP_BIND_HOST=127.0.0.1` и `APP_PORT=3000`. `OPENAI_API_KEY` добавьте только на сервере, если нужны реальные AI-сводки. Не используйте пароль SSH как пароль БД. Сохраните файл с режимом `600`.
+
+### 2. Build, migrations/seed, запуск
+
+```bash
+docker compose config --quiet
+docker compose build
+docker compose run --rm app node dist/server/migrate.js
+docker compose up -d
+docker compose ps
+curl -fsS http://127.0.0.1:3000/api/health
+```
+
+`migrate.js` применяет `server/schema.sql`, импортирует исходный dataset на пустой БД и создаёт демо-аккаунты, курс и чаты. Шаг повторяемый; приложение также выполняет его при собственном старте. Данные PostgreSQL находятся в именованном volume `career_quest_db` и сохраняются после `restart` и `down` без `-v`. `docker compose ps` должен показывать **healthy** для `db` и `app`; endpoint должен вернуть `{"ok":true,"database":"ready"}`. Container app работает от непривилегированного пользователя Node. PostgreSQL не публикует порт на хост; Node доступен только с `127.0.0.1:3000`.
+
+### 3. Nginx и HTTPS на одном домене
+
+React build и `/api` обслуживает один Express-сервис. CORS для браузера не нужен: frontend делает относительные запросы `/api` на тот же домен. Reverse proxy должен передавать `Host` и `X-Forwarded-Proto`; это необходимо для `Secure` cookie и проверки `Origin`. Образец конфигурации — `deploy/nginx/careerquest.conf.example`, upstream `http://127.0.0.1:3000`, лимит тела **20 МБ** для двух импортируемых файлов до 8 МБ и аватаров.
+
+**Перед активацией образца проверьте существующие vhost**: на домене уже может работать другой сайт. Не добавляйте второй `server_name` поверх него. После согласованного переключения vhost и настройки TLS проверка выглядит так:
+
+```bash
+sudo nginx -T 2>&1 | grep -n 'careerquest.absystems.kz'
+sudo nginx -t
+sudo systemctl reload nginx
+curl -fsS https://careerquest.absystems.kz/api/health
+```
+
+Если сертификат для этого имени ещё не выпущен, настройте его через [Certbot для Nginx](https://certbot.eff.org/instructions?os=snap&ws=nginx), затем выполните `sudo certbot --nginx -d careerquest.absystems.kz` и `sudo certbot renew --dry-run`. До корректного сертификата не считайте HTTPS deployment завершённым. Текущий Nginx и его существующие сайты нельзя заменять без проверки конфигурации на VPS.
+
+### 4. Логи, обновление, backup, restart и rollback
+
+```bash
+docker compose ps
+docker compose logs --tail=100 app db
+mkdir -p backups && chmod 700 backups
+docker compose exec -T db pg_dump -U career_quest -d career_quest -Fc > "backups/career_quest_$(date +%F_%H%M%S).dump"
+```
+
+Файлы `backups/` игнорируются Git, но их нужно копировать в отдельное защищённое хранилище. Перед обновлением из `main` запомните предыдущий commit и сделайте backup:
+
+```bash
+git rev-parse HEAD > .deploy-previous-revision
+git pull --ff-only origin main
+docker compose config --quiet
+docker compose build
+docker compose run --rm app node dist/server/migrate.js
+docker compose up -d
+docker compose ps
+curl -fsS http://127.0.0.1:3000/api/health
+```
+
+Перезапуск приложения не сбрасывает PostgreSQL:
+
+```bash
+docker compose restart app
+curl -fsS http://127.0.0.1:3000/api/health
+```
+
+Если новый код не работает, верните предыдущую **версию приложения** (файл `.deploy-previous-revision` игнорируется Git):
+
+```bash
+git switch --detach "$(cat .deploy-previous-revision)"
+docker compose build app
+docker compose up -d --no-deps app
+curl -fsS http://127.0.0.1:3000/api/health
+```
+
+Это не откатывает данные БД; перед обновлением нужен dump. Миграции в проекте добавочные, но совместимость старой версии с новой схемой всё равно нужно проверять. Для следующего обновления вернитесь на `main` командой `git switch main` и выполните проверку/обновление заново. **Не используйте `docker compose down -v` на VPS**: флаг `-v` удаляет PostgreSQL volume.
+
+## Dataset и загрузка данных жюри
+
+| Файл в `data/` | Назначение |
+|---|---|
+| `employees.json` | 200 синтетических сотрудников: роль, грейд, навыки, цель, руководитель |
+| `skills.json` | 60 навыков и требования 32 профилей ролей/грейдов |
+| `events.json` | 40 активностей, prerequisites, развиваемые навыки, `gain/max_level` |
+| `activity_history.csv` | 2743 записи участия со статусами `completed`, `no_show`, `declined`, `dropped` и др. |
+| `demo_learning.json` | Отдельный demo-курс; не изменяет смысл исходного каталога организаторов |
+
+Формат входных полей описан в `data/README.ru.md`, также есть `data/README.md` и `data/README.kz.md`. Чтобы загрузить дополнительные данные:
+
+1. Войдите как `hr` или `admin`, откройте **«HR аналитика» → «Загрузить проверочные данные»**.
+2. Выберите `employees.json` и/или `activity_history.csv` **того же формата**. Если CSV ссылается на нового сотрудника, отправьте оба файла одним импортом.
+3. Нажмите **«Импортировать»** и проверьте ответ с числом добавленных/обновлённых записей. Совпадающие `employee_id`/`record_id` обновляются, новые добавляются; неизвестные навыки, роли и мероприятия отклоняются. Лимит каждого файла — 8 МБ.
+4. Найдите employee ID в «Команда» или HR Analytics и проверьте рекомендации. Для личного входа нового сотрудника `admin` отдельно создаёт учетную запись и привязывает её к этому employee ID.
+
+## Screenshots
+
+Скриншоты сделаны на синтетических демо-профилях, без API-ключей и серверных секретов.
+
+| Карьерный обзор | Обучение и achievement |
+|---|---|
+| ![Employee Dashboard](docs/screenshots/employee-dashboard.png) | ![Digital Starter на мобильном](docs/screenshots/learning-achievement-mobile.png) |
+
+| HR Analytics | Чат и OpenAI-сводка |
+|---|---|
+| ![HR Analytics](docs/screenshots/hr-analytics.png) | ![Chat AI Summary](docs/screenshots/chat-ai-summary.png) |
+
+Другие экраны: [Login](docs/screenshots/login.png), [Career trajectory](docs/screenshots/career-trajectory.png), [Admin](docs/screenshots/admin-users.png), [Audit Log](docs/screenshots/audit-log.png), [Mobile chat](docs/screenshots/chat-mobile.png).
 
 ## Проверка сборки и API
 
@@ -221,7 +415,7 @@ node scripts/social-smoke.mjs
 
 В PowerShell команды `npm`/`npx` при запрете `.ps1` выполняются как `npm.cmd`/`npx.cmd`. Основной smoke-тест проверяет карьерный сценарий и три системные роли, learning smoke — quiz и achievement. `social-smoke.mjs` проверяет семь демо-ролей, запрет изменения кадровых и системных полей сотрудником, однократную дату рождения и исправление ADMIN, аватар, пароль, историю входов, фильтры аудита, видимость/запреты чатов и изоляцию клиента. Smoke-скрипты добавляют проверочных пользователей с уникальными ID в локальную БД; для чистого повторного показа используйте новую БД или Docker volume.
 
-## Известные ограничения
+## Known Limitations
 
 - Публичные демо-аккаунты предназначены для локального стенда; перед эксплуатацией нужно сменить пароли и использовать HTTPS. Корпоративное SSO/MFA и централизованная неизменяемая SIEM-интеграция не реализованы; локальный аудит изменений и входов хранится в PostgreSQL.
 - При отсутствии OpenAI-ключа работает воспроизводимый расчетный подбор. Реальный вызов OpenAI требует собственного ключа и доступа аккаунта.
@@ -231,3 +425,7 @@ node scripts/social-smoke.mjs
 - Завершение активности подтверждается самим пользователем или ADMIN. В рабочей системе статус нужно получать из LMS/HRIS или подтверждать ответственным лицом.
 - Demo learning содержит один фиксированный модуль и пять вопросов; это демонстрация полного цикла, без авторского редактора курсов, сертификатов и интеграции с LMS. Ручного сброса `completed` через UI нет.
 - Готовность отражает покрытие навыков и не заменяет решение о повышении. Интерфейс русскоязычный, исходные названия навыков/событий сохранены на английском.
+
+## HackAlem AI / Halyk Bank
+
+Halyk Career Quest разработан командой **A&B Systems** для кейса **Halyk Bank** в рамках **HackAlem AI**. Это хакатонный прототип внутреннего HR/AI-продукта, а не банковская production-система. Товарные знаки и бренд-материалы Halyk принадлежат их правообладателю и используются только в демонстрационном проекте.

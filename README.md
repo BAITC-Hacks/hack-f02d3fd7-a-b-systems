@@ -288,7 +288,7 @@ npm start
 
 ## Production Deployment — Ubuntu VPS
 
-Адрес приложения: **https://careerquest.absystems.kz**. Предполагается Ubuntu VPS с Docker Engine, Compose plugin, Nginx и доступом VPS к **приватному** GitHub-репозиторию (например, read-only deploy key). [Официальная инструкция Docker для Ubuntu](https://docs.docker.com/engine/install/ubuntu/) описывает установку Engine и Compose plugin. Эти команды выполняются **на VPS после SSH-входа**; адрес SSH, пароль, private deploy key и OpenAI-ключ не записывайте в репозиторий. DNS приложение не меняет.
+Адрес приложения: **https://careerquest.absystems.kz**. Нужны Ubuntu VPS с Docker Engine, Compose plugin, Nginx и доступом VPS к **приватному** GitHub-репозиторию (например, read-only deploy key). [Официальная инструкция Docker для Ubuntu](https://docs.docker.com/engine/install/ubuntu/) описывает установку Engine и Compose plugin. Эти команды выполняются **на VPS после SSH-входа**; адрес SSH, пароль, private deploy key и OpenAI-ключ не записывайте в репозиторий. DNS приложение не меняет. На текущем общем VPS порт `127.0.0.1:3000` занят другим сервисом, поэтому Career Quest использует `127.0.0.1:3012`; на отдельном VPS можно выбрать свободный порт.
 
 ### 1. Clone и серверный `.env`
 
@@ -300,7 +300,7 @@ chmod 600 .env
 nano .env
 ```
 
-Доступ к приватному репозиторию нужно выдать VPS до `git clone`; публикуйте на GitHub только **публичную** часть deploy key. В `.env` замените заглушку `POSTGRES_PASSWORD` на новый случайный пароль, задайте `APP_ORIGIN=https://careerquest.absystems.kz`, оставьте `APP_BIND_HOST=127.0.0.1` и `APP_PORT=3000`. `OPENAI_API_KEY` добавьте только на сервере, если нужны реальные AI-сводки. Не используйте пароль SSH как пароль БД. Сохраните файл с режимом `600`.
+Доступ к приватному репозиторию нужно выдать VPS до `git clone` и `git pull`; публикуйте на GitHub только **публичную** часть deploy key. В `.env` замените заглушку `POSTGRES_PASSWORD` на новый случайный пароль, задайте `APP_ORIGIN=https://careerquest.absystems.kz`, оставьте `APP_BIND_HOST=127.0.0.1` и установите `APP_PORT=3012` для текущего VPS. `OPENAI_API_KEY` добавьте только на сервере, если нужны реальные AI-сводки. Не используйте пароль SSH как пароль БД. Сохраните файл с режимом `600`.
 
 ### 2. Build, migrations/seed, запуск
 
@@ -310,25 +310,28 @@ docker compose build
 docker compose run --rm app node dist/server/migrate.js
 docker compose up -d
 docker compose ps
-curl -fsS http://127.0.0.1:3000/api/health
+curl -fsS http://127.0.0.1:3012/api/health
 ```
 
-`migrate.js` применяет `server/schema.sql`, импортирует исходный dataset на пустой БД и создаёт демо-аккаунты, курс и чаты. Шаг повторяемый; приложение также выполняет его при собственном старте. Данные PostgreSQL находятся в именованном volume `career_quest_db` и сохраняются после `restart` и `down` без `-v`. `docker compose ps` должен показывать **healthy** для `db` и `app`; endpoint должен вернуть `{"ok":true,"database":"ready"}`. Container app работает от непривилегированного пользователя Node. PostgreSQL не публикует порт на хост; Node доступен только с `127.0.0.1:3000`.
+`migrate.js` применяет `server/schema.sql`, импортирует исходный dataset на пустой БД и создаёт демо-аккаунты, курс и чаты. Шаг повторяемый; приложение также выполняет его при собственном старте. Данные PostgreSQL находятся в именованном volume `career_quest_db` и сохраняются после `restart` и `down` без `-v`. `docker compose ps` должен показывать **healthy** для `db` и `app`; endpoint должен вернуть `{"ok":true,"database":"ready"}`. Container app работает от непривилегированного пользователя Node. PostgreSQL не публикует порт на хост; Node доступен только с `127.0.0.1:3012` на текущем VPS.
 
 ### 3. Nginx и HTTPS на одном домене
 
-React build и `/api` обслуживает один Express-сервис. CORS для браузера не нужен: frontend делает относительные запросы `/api` на тот же домен. Reverse proxy должен передавать `Host` и `X-Forwarded-Proto`; это необходимо для `Secure` cookie и проверки `Origin`. Образец конфигурации — `deploy/nginx/careerquest.conf.example`, upstream `http://127.0.0.1:3000`, лимит тела **20 МБ** для двух импортируемых файлов до 8 МБ и аватаров.
+React build и `/api` обслуживает один Express-сервис. CORS для браузера не нужен: frontend делает относительные запросы `/api` на тот же домен. Reverse proxy должен передавать `Host` и `X-Forwarded-Proto`; это необходимо для `Secure` cookie и проверки `Origin`. Образец конфигурации — `deploy/nginx/careerquest.conf.example`, upstream в нём по умолчанию `127.0.0.1:3000`; для текущего VPS замените на `127.0.0.1:3012`. Лимит тела **20 МБ** рассчитан на два импортируемых файла до 8 МБ и аватары.
 
-**Перед активацией образца проверьте существующие vhost**: на домене уже может работать другой сайт. Не добавляйте второй `server_name` поверх него. После согласованного переключения vhost и настройки TLS проверка выглядит так:
+**Перед активацией образца проверьте существующие vhost**: на домене уже может работать другой сайт. Не добавляйте второй `server_name` поверх него. Для нового vhost на текущем VPS:
 
 ```bash
 sudo nginx -T 2>&1 | grep -n 'careerquest.absystems.kz'
+sed 's/127.0.0.1:3000/127.0.0.1:3012/' deploy/nginx/careerquest.conf.example | sudo tee /etc/nginx/sites-available/careerquest.absystems.kz >/dev/null
+sudo ln -s /etc/nginx/sites-available/careerquest.absystems.kz /etc/nginx/sites-enabled/careerquest.absystems.kz
 sudo nginx -t
 sudo systemctl reload nginx
+sudo certbot --nginx -d careerquest.absystems.kz --redirect
 curl -fsS https://careerquest.absystems.kz/api/health
 ```
 
-Если сертификат для этого имени ещё не выпущен, настройте его через [Certbot для Nginx](https://certbot.eff.org/instructions?os=snap&ws=nginx), затем выполните `sudo certbot --nginx -d careerquest.absystems.kz` и `sudo certbot renew --dry-run`. До корректного сертификата не считайте HTTPS deployment завершённым. Текущий Nginx и его существующие сайты нельзя заменять без проверки конфигурации на VPS.
+Если vhost уже создан, пропустите команды `sed`/`ln` и проверьте фактический upstream. Если сертификат ещё не выпущен, следуйте [инструкции Certbot для Nginx](https://certbot.eff.org/instructions?os=snap&ws=nginx); затем можно проверить продление `sudo certbot renew --dry-run`. До корректного сертификата не считайте HTTPS deployment завершённым. Текущий Nginx и его существующие сайты проверяйте перед изменениями.
 
 ### 4. Логи, обновление, backup, restart и rollback
 
@@ -336,6 +339,7 @@ curl -fsS https://careerquest.absystems.kz/api/health
 docker compose ps
 docker compose logs --tail=100 app db
 mkdir -p backups && chmod 700 backups
+umask 077
 docker compose exec -T db pg_dump -U career_quest -d career_quest -Fc > "backups/career_quest_$(date +%F_%H%M%S).dump"
 ```
 
@@ -349,14 +353,14 @@ docker compose build
 docker compose run --rm app node dist/server/migrate.js
 docker compose up -d
 docker compose ps
-curl -fsS http://127.0.0.1:3000/api/health
+curl -fsS http://127.0.0.1:3012/api/health
 ```
 
 Перезапуск приложения не сбрасывает PostgreSQL:
 
 ```bash
 docker compose restart app
-curl -fsS http://127.0.0.1:3000/api/health
+curl -fsS http://127.0.0.1:3012/api/health
 ```
 
 Если новый код не работает, верните предыдущую **версию приложения** (файл `.deploy-previous-revision` игнорируется Git):
@@ -365,7 +369,7 @@ curl -fsS http://127.0.0.1:3000/api/health
 git switch --detach "$(cat .deploy-previous-revision)"
 docker compose build app
 docker compose up -d --no-deps app
-curl -fsS http://127.0.0.1:3000/api/health
+curl -fsS http://127.0.0.1:3012/api/health
 ```
 
 Это не откатывает данные БД; перед обновлением нужен dump. Миграции в проекте добавочные, но совместимость старой версии с новой схемой всё равно нужно проверять. Для следующего обновления вернитесь на `main` командой `git switch main` и выполните проверку/обновление заново. **Не используйте `docker compose down -v` на VPS**: флаг `-v` удаляет PostgreSQL volume.

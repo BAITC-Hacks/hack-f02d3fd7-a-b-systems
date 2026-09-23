@@ -9,7 +9,12 @@ const COOKIE = 'cq_session';
 const SESSION_DAYS = 7;
 const SCRYPT_OPTIONS = { N: 16384, r: 8, p: 5, maxmem: 64 * 1024 * 1024 };
 export type Role = 'ADMIN' | 'HR' | 'EMPLOYEE';
-export type AuthUser = { id: string; username: string; email: string; full_name: string; role: Role; employee_id: string | null; is_active: boolean };
+export type BusinessRole = 'COMPANY_EMPLOYEE' | 'HR_SPECIALIST' | 'DEPARTMENT_MANAGER' |
+  'CONTACT_CLIENT' | 'CONTACT_OPERATOR' | 'CONTACT_SUPERVISOR';
+export const businessRoles: BusinessRole[] = ['COMPANY_EMPLOYEE','HR_SPECIALIST','DEPARTMENT_MANAGER',
+  'CONTACT_CLIENT','CONTACT_OPERATOR','CONTACT_SUPERVISOR'];
+export type AuthUser = { id: string; username: string; email: string; full_name: string; role: Role;
+  business_role: BusinessRole; employee_id: string | null; is_active: boolean; has_avatar: boolean };
 type StoredUser = AuthUser & { password_hash: string };
 
 declare global {
@@ -34,8 +39,8 @@ export async function verifyPassword(password: string, stored: string): Promise<
 }
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
-const publicUser = ({ id, username, email, full_name, role, employee_id, is_active }: StoredUser): AuthUser =>
-  ({ id, username, email, full_name, role, employee_id, is_active });
+const publicUser = ({ id, username, email, full_name, role, business_role, employee_id, is_active, has_avatar }: StoredUser): AuthUser =>
+  ({ id, username, email, full_name, role, business_role, employee_id, is_active, has_avatar: Boolean(has_avatar) });
 
 function cookieOptions(req: Request) {
   return { httpOnly: true, sameSite: 'strict' as const, secure: req.secure, path: '/', maxAge: SESSION_DAYS * 86400_000 };
@@ -50,11 +55,15 @@ export async function readSession(req: Request): Promise<AuthUser | null> {
   const token = cookieToken(req);
   if (!token || !/^[a-f0-9]{64}$/.test(token)) return null;
   const result = await pool.query<StoredUser & { session_id: string }>(
-    `SELECT s.id AS session_id, u.* FROM user_sessions s JOIN users u ON u.id=s.user_id
+    `SELECT s.id AS session_id, u.*, (p.avatar_data IS NOT NULL) AS has_avatar
+     FROM user_sessions s JOIN users u ON u.id=s.user_id LEFT JOIN user_profiles p ON p.user_id=u.id
      WHERE s.token_hash=$1 AND s.expires_at>now() AND u.is_active=true`, [hashToken(token)]);
   const row = result.rows[0];
   if (!row) return null;
   req.authSessionId = row.session_id;
+  await pool.query(`INSERT INTO user_profiles(user_id,last_seen_at) VALUES($1,now())
+    ON CONFLICT(user_id) DO UPDATE SET last_seen_at=now()
+    WHERE user_profiles.last_seen_at IS NULL OR user_profiles.last_seen_at < now()-interval '5 minutes'`, [row.id]);
   return publicUser(row);
 }
 
@@ -76,11 +85,17 @@ export function requireRole(...roles: Role[]) {
   };
 }
 
-export function allowEmployeeRead(req: Request, res: Response, next: NextFunction) {
-  if (req.authUser?.role === 'EMPLOYEE' && req.authUser.employee_id !== req.params.id) {
-    res.status(403).json({ error: 'Нет доступа к этому сотруднику' }); return;
-  }
-  next();
+export async function allowEmployeeRead(req: Request, res: Response, next: NextFunction) {
+  try {
+    const user = req.authUser!;
+    if (user.role !== 'EMPLOYEE' || user.employee_id === req.params.id) { next(); return; }
+    if (user.business_role === 'DEPARTMENT_MANAGER' || user.business_role === 'CONTACT_SUPERVISOR') {
+      const team = await pool.query(`SELECT 1 FROM employees WHERE employee_id=$1 AND data->>'manager_id'=$2`,
+        [req.params.id,user.employee_id]);
+      if (team.rowCount) { next(); return; }
+    }
+    res.status(403).json({ error: 'Нет доступа к этому сотруднику' });
+  } catch (error) { next(error); }
 }
 
 export function allowEmployeeWrite(req: Request, res: Response, next: NextFunction) {
@@ -103,17 +118,30 @@ export async function login(req: Request, res: Response, next: NextFunction) {
     const entry = attempts.get(key) ?? { count: 0, until: now + 15 * 60_000 };
     if (now > entry.until) { entry.count = 0; entry.until = now + 15 * 60_000; }
     if (entry.count >= 10) { res.status(429).json({ error: 'Слишком много попыток. Повторите позже.' }); return; }
-    const result = await pool.query<StoredUser>('SELECT * FROM users WHERE lower(username)=$1 OR lower(email)=$1 LIMIT 1', [loginValue]);
+    const result = await pool.query<StoredUser>(`SELECT u.*, (p.avatar_data IS NOT NULL) AS has_avatar FROM users u
+      LEFT JOIN user_profiles p ON p.user_id=u.id WHERE lower(u.username)=$1 OR lower(u.email)=$1 LIMIT 1`, [loginValue]);
     const user = result.rows[0];
     const valid = user ? await verifyPassword(password, user.password_hash) : await verifyPassword(password, DUMMY_HASH);
     if (!user || !user.is_active || !valid) {
       entry.count++; attempts.set(key, entry);
+      await pool.query(`INSERT INTO login_history(id,user_id,login_identifier,success,ip_address,user_agent)
+        VALUES($1,$2,$3,false,$4,$5)`, [randomUUID(),user?.id ?? null,user?.username ?? '[unknown]',req.ip || null,req.get('user-agent')?.slice(0,500) ?? null]);
       res.status(401).json({ error: 'Неверный логин или пароль' }); return;
     }
     attempts.delete(key);
     const token = randomBytes(32).toString('hex');
-    await pool.query(`INSERT INTO user_sessions(id,user_id,token_hash,expires_at)
-      VALUES($1,$2,$3,now()+interval '7 days')`, [randomUUID(), user.id, hashToken(token)]);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`INSERT INTO user_sessions(id,user_id,token_hash,expires_at)
+        VALUES($1,$2,$3,now()+interval '7 days')`, [randomUUID(), user.id, hashToken(token)]);
+      await client.query(`INSERT INTO user_profiles(user_id,last_seen_at) VALUES($1,now())
+        ON CONFLICT(user_id) DO UPDATE SET last_seen_at=now()`, [user.id]);
+      await client.query(`INSERT INTO login_history(id,user_id,login_identifier,success,ip_address,user_agent)
+        VALUES($1,$2,$3,true,$4,$5)`, [randomUUID(),user.id,loginValue,req.ip || null,req.get('user-agent')?.slice(0,500) ?? null]);
+      await client.query('COMMIT');
+    } catch (error) { await client.query('ROLLBACK'); throw error; }
+    finally { client.release(); }
     res.cookie(COOKIE, token, cookieOptions(req));
     res.json({ user: publicUser(user) });
   } catch (error) { next(error); }
@@ -140,16 +168,22 @@ export function sameOrigin(req: Request, res: Response, next: NextFunction) {
 }
 
 export async function seedDemoUsers(): Promise<void> {
-  const examples: Array<{ username: string; email: string; full_name: string; role: Role; employee_id: string | null; password: string }> = [
-    { username: 'admin', email: 'admin@careerquest.demo', full_name: 'Демо администратор', role: 'ADMIN', employee_id: null, password: 'DemoAdmin!2026' },
-    { username: 'hr', email: 'hr@careerquest.demo', full_name: 'Демо HR', role: 'HR', employee_id: null, password: 'DemoHR!2026' },
-    { username: 'employee', email: 'employee@careerquest.demo', full_name: 'Демо сотрудник', role: 'EMPLOYEE', employee_id: 'E0028', password: 'DemoEmployee!2026' },
-    { username: 'learning', email: 'learning@careerquest.demo', full_name: 'Демо обучение', role: 'EMPLOYEE', employee_id: 'E0021', password: 'DemoLearning!2026' },
+  const examples: Array<{ username: string; email: string; full_name: string; role: Role; business_role: BusinessRole; employee_id: string | null; password: string }> = [
+    { username: 'admin', email: 'admin@careerquest.demo', full_name: 'Демо администратор', role: 'ADMIN', business_role: 'COMPANY_EMPLOYEE', employee_id: null, password: 'DemoAdmin!2026' },
+    { username: 'hr', email: 'hr@careerquest.demo', full_name: 'Демо HR', role: 'HR', business_role: 'HR_SPECIALIST', employee_id: null, password: 'DemoHR!2026' },
+    { username: 'employee', email: 'employee@careerquest.demo', full_name: 'Демо сотрудник', role: 'EMPLOYEE', business_role: 'COMPANY_EMPLOYEE', employee_id: 'E0028', password: 'DemoEmployee!2026' },
+    { username: 'learning', email: 'learning@careerquest.demo', full_name: 'Демо обучение', role: 'EMPLOYEE', business_role: 'COMPANY_EMPLOYEE', employee_id: 'E0021', password: 'DemoLearning!2026' },
+    { username: 'manager', email: 'manager@careerquest.demo', full_name: 'Сымбат Абенова', role: 'EMPLOYEE', business_role: 'DEPARTMENT_MANAGER', employee_id: 'E0050', password: 'DemoManager!2026' },
+    { username: 'operator', email: 'operator@careerquest.demo', full_name: 'Анна Новикова', role: 'EMPLOYEE', business_role: 'CONTACT_OPERATOR', employee_id: 'E0009', password: 'DemoOperator!2026' },
+    { username: 'supervisor', email: 'supervisor@careerquest.demo', full_name: 'Зарина Омарова', role: 'EMPLOYEE', business_role: 'CONTACT_SUPERVISOR', employee_id: 'E0035', password: 'DemoSupervisor!2026' },
+    { username: 'client', email: 'client@careerquest.demo', full_name: 'Демо клиент', role: 'EMPLOYEE', business_role: 'CONTACT_CLIENT', employee_id: null, password: 'DemoClient!2026' },
   ];
   for (const user of examples) {
-    await pool.query(`INSERT INTO users(id,username,email,full_name,role,employee_id,password_hash)
-      VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
-    [randomUUID(), user.username, user.email, user.full_name, user.role, user.employee_id, await hashPassword(user.password)]);
+    await pool.query(`INSERT INTO users(id,username,email,full_name,role,business_role,employee_id,password_hash)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
+    [randomUUID(), user.username, user.email, user.full_name, user.role, user.business_role, user.employee_id, await hashPassword(user.password)]);
   }
+  await pool.query(`UPDATE users SET business_role='HR_SPECIALIST' WHERE username='hr' AND business_role='COMPANY_EMPLOYEE'`);
+  await pool.query(`INSERT INTO user_profiles(user_id) SELECT id FROM users ON CONFLICT DO NOTHING`);
   console.log('Demo accounts checked. Change their passwords before exposing this instance.');
 }

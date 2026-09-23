@@ -10,6 +10,9 @@ import { importFiles } from './import.js';
 import { allowEmployeeRead, allowEmployeeWrite, login, logout, requireAuth, requireRole, sameOrigin, seedDemoUsers } from './auth.js';
 import { adminRouter } from './admin.js';
 import { employeeAchievements, grantActivityAchievements, learningRecommendation, learningRouter, seedLearningContent } from './learning.js';
+import { profileRouter } from './profile.js';
+import { chatRouter, seedDemoChats } from './chats.js';
+import { auditRouter } from './audit.js';
 import type { History } from './types.js';
 
 const app = express();
@@ -26,12 +29,16 @@ app.get('/api/auth/me', (req, res) => res.json({ user: req.authUser }));
 app.post('/api/auth/logout', logout);
 app.use('/api/admin', adminRouter);
 app.use('/api', learningRouter);
+app.use('/api', profileRouter);
+app.use('/api', chatRouter);
+app.use('/api', auditRouter);
 
 app.get('/api/bootstrap', async (req, res) => {
   const state = await loadState();
   res.json({
     asOf: state.asOf,
-    employees: state.employees.filter(item => req.authUser?.role !== 'EMPLOYEE' || item.employee_id === req.authUser.employee_id)
+    employees: state.employees.filter(item => req.authUser?.role !== 'EMPLOYEE' || item.employee_id === req.authUser.employee_id ||
+      (['DEPARTMENT_MANAGER','CONTACT_SUPERVISOR'].includes(req.authUser.business_role) && item.manager_id === req.authUser.employee_id))
       .map(({ employee_id, full_name, role, grade, department }) =>
       ({ employee_id, full_name, role, grade, department })),
     totalEvents: state.events.length,
@@ -144,10 +151,13 @@ const clientDir = path.resolve(process.cwd(), 'dist/client');
 app.use(express.static(clientDir));
 app.use((_req, res) => res.sendFile(path.join(clientDir, 'index.html')));
 app.use((error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+    res.status(413).json({ error: 'Файл превышает допустимый размер' }); return;
+  }
   console.error(error);
   res.status(500).json({ error: 'Внутренняя ошибка сервера' });
 });
 
-initializeDatabase().then(seedLearningContent).then(seedDemoUsers)
+initializeDatabase().then(seedLearningContent).then(seedDemoUsers).then(seedDemoChats)
   .then(() => app.listen(port, () => console.log(`Career Quest: http://localhost:${port}`)))
   .catch(error => { console.error('Database startup failed:', error); process.exit(1); });

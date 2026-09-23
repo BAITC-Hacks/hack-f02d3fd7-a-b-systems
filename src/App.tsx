@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight, Award, BookOpen, BriefcaseBusiness, CalendarDays, Check, CheckCircle2,
   ChevronDown, Clock3, Compass, Download, FileUp, Flame, GraduationCap,
-  LayoutDashboard, LogOut, Menu, Search, Settings2, ShieldCheck, Sparkles, Target,
+  LayoutDashboard, LogOut, Menu, MessageCircle, Search, Settings2, ShieldCheck, Sparkles, Target,
   TrendingUp, UploadCloud, Users, X,
 } from 'lucide-react';
 import { api, type AuthUser } from './api';
@@ -11,8 +11,14 @@ import { BrandLockup } from './Brand';
 import { AdminPanel } from './AdminPanel';
 import { LearningPage, type Achievement } from './LearningPage';
 import { HRLearningPanel } from './HRLearningPanel';
+import { ProfilePage } from './ProfilePage';
+import { ChatsPage } from './ChatsPage';
+import { AuditPage } from './AuditPage';
+import { TeamPage } from './TeamPage';
+import { UserAvatar } from './UserAvatar';
 
-type View = 'overview' | 'journey' | 'history' | 'learning' | 'hr' | 'admin';
+type View = 'overview' | 'journey' | 'history' | 'learning' | 'achievements' | 'chats' |
+  'profile' | 'team' | 'contact' | 'audit' | 'hr' | 'admin';
 type EmployeeListItem = { employee_id: string; full_name: string; role: string; grade: string; department: string };
 type Gap = { skill_id: string; name: string; current: number; required: number; gap: number; critical: boolean };
 type History = { record_id: string; event_id: string; event_title: string; date: string; status: string; completion_pct: number };
@@ -67,11 +73,13 @@ function App() {
   }
   if (user === undefined) return <div className="loading-page auth-loading">Загружаем Career Quest...</div>;
   if (!user) return <LoginPage onLogin={setUser} />;
-  return <CareerWorkspace key={user.id} user={user} onLogout={signOut} />;
+  return <CareerWorkspace key={user.id} user={user} onLogout={signOut} onUserChange={setUser} />;
 }
 
-function CareerWorkspace({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
-  const [view, setView] = useState<View>('overview');
+function CareerWorkspace({ user, onLogout, onUserChange }: { user: AuthUser; onLogout: () => void;
+  onUserChange: (next: AuthUser) => void }) {
+  const [view, setView] = useState<View>(user.business_role === 'CONTACT_CLIENT' ? 'chats' : 'overview');
+  const [avatarVersion,setAvatarVersion] = useState(0);
   const [employees, setEmployees] = useState<EmployeeListItem[]>([]);
   const [asOf, setAsOf] = useState('2026-10-01');
   const [selectedId, setSelectedId] = useState('');
@@ -95,7 +103,8 @@ function CareerWorkspace({ user, onLogout }: { user: AuthUser; onLogout: () => v
       .then(data => {
         setEmployees(data.employees);
         setAsOf(data.asOf);
-        setSelectedId(user.employee_id || data.employees.find(item => item.employee_id === 'E0028')?.employee_id || data.employees[0]?.employee_id || '');
+        setSelectedId(user.role === 'EMPLOYEE' ? (user.employee_id || '') :
+          (data.employees.find(item => item.employee_id === 'E0028')?.employee_id || data.employees[0]?.employee_id || ''));
       }).catch(error => setToast(error.message));
   }, []);
 
@@ -167,18 +176,28 @@ function CareerWorkspace({ user, onLogout }: { user: AuthUser; onLogout: () => v
   return <div className="shell">
     <aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}>
       <BrandLockup inverse />
-      <div className="sidebar-label">WORKSPACE</div>
+      {user.business_role !== 'CONTACT_CLIENT' && <><div className="sidebar-label">WORKSPACE</div>
       <nav className="nav-list">
         <button className={view === 'overview' ? 'active' : ''} onClick={() => changeView('overview')}><LayoutDashboard size={19} /> Обзор <span className="nav-indicator" /></button>
         <button className={view === 'journey' ? 'active' : ''} onClick={() => changeView('journey')}><TrendingUp size={19} /> Моя траектория <span className="nav-indicator" /></button>
         <button className={view === 'learning' ? 'active' : ''} onClick={() => changeView('learning')}><GraduationCap size={19} /> Обучение <span className="nav-indicator" /></button>
+        <button className={view === 'achievements' ? 'active' : ''} onClick={() => changeView('achievements')}><Award size={19} /> Достижения <span className="nav-indicator" /></button>
+        <button className={view === 'chats' ? 'active' : ''} onClick={() => changeView('chats')}><MessageCircle size={19} /> Чаты <span className="nav-indicator" /></button>
         <button className={view === 'history' ? 'active' : ''} onClick={() => changeView('history')}><Clock3 size={19} /> История <span className="nav-indicator" /></button>
+        <button className={view === 'profile' ? 'active' : ''} onClick={() => changeView('profile')}><Users size={19} /> Мой профиль <span className="nav-indicator" /></button>
       </nav>
-       {user.role !== 'EMPLOYEE' && <><div className="sidebar-label team-label">КОМАНДА</div><nav className="nav-list"><button className={view === 'hr' ? 'active' : ''} onClick={() => changeView('hr')}><Users size={19} /> HR аналитика <span className="nav-indicator" /></button></nav></>}
-       {user.role === 'ADMIN' && <><div className="sidebar-label team-label">УПРАВЛЕНИЕ</div><nav className="nav-list"><button className={view === 'admin' ? 'active' : ''} onClick={() => changeView('admin')}><Settings2 size={19} /> Администрирование <span className="nav-indicator" /></button></nav></>}
+      </>}
+      {user.business_role === 'CONTACT_CLIENT' && <><div className="sidebar-label">WORKSPACE</div><nav className="nav-list"><button className={view === 'chats' ? 'active' : ''} onClick={() => changeView('chats')}><MessageCircle size={19} /> Чаты <span className="nav-indicator" /></button><button className={view === 'profile' ? 'active' : ''} onClick={() => changeView('profile')}><Users size={19} /> Мой профиль <span className="nav-indicator" /></button></nav></>}
+      {(user.role !== 'EMPLOYEE' || ['DEPARTMENT_MANAGER','CONTACT_SUPERVISOR'].includes(user.business_role)) && <><div className="sidebar-label team-label">КОМАНДА</div><nav className="nav-list">
+        {user.role !== 'EMPLOYEE' && <button className={view === 'hr' ? 'active' : ''} onClick={() => changeView('hr')}><Users size={19} /> HR аналитика <span className="nav-indicator" /></button>}
+        <button className={view === 'team' ? 'active' : ''} onClick={() => changeView('team')}><Users size={19} /> Команда <span className="nav-indicator" /></button></nav></>}
+      {['CONTACT_OPERATOR','CONTACT_SUPERVISOR'].includes(user.business_role) && <><div className="sidebar-label team-label">КОНТАКТ-ЦЕНТР</div><nav className="nav-list"><button className={view === 'contact' ? 'active' : ''} onClick={() => changeView('contact')}><MessageCircle size={19} /> Контакт-центр <span className="nav-indicator" /></button></nav></>}
+      {(user.role === 'ADMIN' || user.role === 'HR') && <><div className="sidebar-label team-label">УПРАВЛЕНИЕ</div><nav className="nav-list">
+        {user.role === 'ADMIN' && <button className={view === 'admin' ? 'active' : ''} onClick={() => changeView('admin')}><Settings2 size={19} /> Администрирование <span className="nav-indicator" /></button>}
+        <button className={view === 'audit' ? 'active' : ''} onClick={() => changeView('audit')}><ShieldCheck size={19} /> Журнал аудита <span className="nav-indicator" /></button></nav></>}
       <div className="sidebar-bottom">
         <div className="mini-orbit"><Sparkles size={20} /><span>Каждый шаг<br />имеет значение.</span></div>
-         <div className="sidebar-profile"><div className="avatar small">{initials(user.full_name)}</div><div><strong>{user.full_name}</strong><small>{user.role}</small></div></div>
+         <div className="sidebar-profile"><UserAvatar id={user.id} name={user.full_name} hasAvatar={user.has_avatar} version={avatarVersion} className="small" /><div><strong>{user.full_name}</strong><small>{user.role}</small></div></div>
          <button className="logout-button" onClick={onLogout}><LogOut size={17} /> Выйти</button>
       </div>
     </aside>
@@ -188,17 +207,22 @@ function CareerWorkspace({ user, onLogout }: { user: AuthUser; onLogout: () => v
       <header className="topbar">
         <button className="menu-button" onClick={() => setMobileMenu(!mobileMenu)} aria-label="Меню">{mobileMenu ? <X size={22} /> : <Menu size={22} />}</button>
         <div className="mobile-brand"><BrandLockup compact /></div>
-         <div className="breadcrumb">Рабочее пространство <span>/</span> <strong>{view === 'admin' ? 'Администрирование' : view === 'hr' ? 'HR аналитика' : view === 'learning' ? 'Обучение' : view === 'journey' ? 'Моя траектория' : view === 'history' ? 'История активностей' : 'Обзор'}</strong></div>
-         <div className="top-actions"><span className="snapshot"><span className="live-dot" /> Срез данных · {dateLabel(asOf)}</span><div className="avatar top-avatar">{initials(user.full_name)}</div></div>
+         <div className="breadcrumb">Рабочее пространство <span>/</span> <strong>{({admin:'Администрирование',hr:'HR аналитика',learning:'Обучение',journey:'Моя траектория',history:'История активностей',profile:'Мой профиль',chats:'Чаты',team:'Команда',contact:'Контакт-центр',audit:'Журнал аудита',achievements:'Достижения',overview:'Обзор'} as Record<View,string>)[view]}</strong></div>
+         <div className="top-actions"><span className="snapshot"><span className="live-dot" /> Срез данных · {dateLabel(asOf)}</span><UserAvatar id={user.id} name={user.full_name} hasAvatar={user.has_avatar} version={avatarVersion} className="top-avatar" /></div>
       </header>
 
       <main className="main-content">
-         {view !== 'hr' && view !== 'admin' && <div className="employee-switcher-wrap">
+         {['overview','journey','learning','history','achievements'].includes(view) && <div className="employee-switcher-wrap">
            {user.role === 'EMPLOYEE' ? <div className="employee-switcher employee-fixed"><Users size={17} /> <span>{current ? `${current.full_name} · ${current.employee_id}` : 'Ваш профиль'}</span></div> : <><button className="employee-switcher" onClick={() => setSearchOpen(!searchOpen)}><Search size={17} /><span>{current ? `${current.full_name} · ${current.employee_id}` : 'Выберите сотрудника'}</span><ChevronDown size={17} /></button>
            {searchOpen && <div className="employee-dropdown"><input autoFocus placeholder="Имя, ID или роль..." value={search} onChange={event => setSearch(event.target.value)} /><div className="employee-options">{filteredEmployees.map(item => <button key={item.employee_id} onClick={() => { setSelectedId(item.employee_id); setSearchOpen(false); setSearch(''); }}><span className="avatar option-avatar">{initials(item.full_name)}</span><span><strong>{item.full_name}</strong><small>{item.employee_id} · {item.role} · {item.grade}</small></span></button>)}</div></div>}</>}
          </div>}
 
-         {view === 'admin' && user.role === 'ADMIN' ? <AdminPanel currentUser={user} /> : view === 'hr' ? (hr ? <><div className="page-heading"><div><span className="eyebrow">PEOPLE ANALYTICS</span><h1>Пульс развития команды<span className="heading-dot">.</span></h1><p>Где сейчас больше всего разрывов и кому нужен следующий шаг.</p></div><span className="pill violet"><ShieldCheck size={15} /> Доступ HR</span></div>
+         {view === 'profile' ? <ProfilePage user={user} onUserChange={next=>{setAvatarVersion(Date.now());onUserChange(next)}} />
+           : (view === 'chats' || view === 'contact') ? <ChatsPage user={user} />
+           : view === 'team' ? <TeamPage user={user} onOpenEmployee={id=>{setSelectedId(id);changeView('overview')}} />
+           : view === 'audit' ? <AuditPage user={user} />
+           : view === 'achievements' ? <><div className="page-heading"><div><span className="eyebrow">CAREER MILESTONES</span><h1>Достижения<span className="heading-dot">.</span></h1><p>Завершённые шаги и признание прогресса.</p></div></div><section className="panel achievements-panel"><div className="achievement-grid">{profile?.achievements?.map(item=><div className="achievement-badge" key={item.achievement_id}><span><Award size={24}/></span><div><strong>{item.title}</strong><p>{item.description}</p><small>{item.awarded_at ? new Date(item.awarded_at).toLocaleDateString('ru-RU') : ''}</small></div></div>)}{!profile?.achievements?.length&&<div className="achievement-empty">Первое достижение появится после обучения.</div>}</div></section></>
+           : view === 'admin' && user.role === 'ADMIN' ? <AdminPanel currentUser={user} /> : view === 'hr' ? (hr ? <><div className="page-heading"><div><span className="eyebrow">PEOPLE ANALYTICS</span><h1>Пульс развития команды<span className="heading-dot">.</span></h1><p>Где сейчас больше всего разрывов и кому нужен следующий шаг.</p></div><span className="pill violet"><ShieldCheck size={15} /> Доступ HR</span></div>
             <div className="metric-grid hr-metrics"><Metric icon={<Users size={21} />} label="Сотрудников" value={hr.totalEmployees} tone="blue" /><Metric icon={<Target size={21} />} label="Без следующего шага" value={hr.withoutRecommendation.length} tone="amber" /><Metric icon={<BookOpen size={21} />} label="Активностей" value={hr.totalActivities} tone="violet" /><Metric icon={<CheckCircle2 size={21} />} label="Участий в истории" value={hr.totalParticipation} tone="green" /></div>
             <div className="hr-grid"><section className="panel"><div className="panel-header"><div><span className="eyebrow">SKILL INTELLIGENCE</span><h2>Частые разрывы</h2></div><span className="subtle">Количество сотрудников</span></div><div className="gap-chart">{hr.topGaps.map((item, index) => <div className="chart-row" key={item.skill_id}><span className="chart-rank">{String(index + 1).padStart(2, '0')}</span><div className="chart-main"><div><strong>{item.name}</strong><small>{item.criticalCount} критичных</small></div><div className="chart-track"><span style={{ width: `${Math.max(7, item.count / hr.totalEmployees * 100)}%` }} /></div></div><strong className="chart-number">{item.count}</strong></div>)}</div></section>
               <section className="panel no-step-panel"><div className="panel-header"><div><span className="eyebrow">REQUIRES ATTENTION</span><h2>Без рекомендации</h2></div><span className="count-badge">{hr.withoutRecommendation.length}</span></div><p className="panel-intro">Нет доступной активности, закрывающей разрыв с учётом допуска и истории.</p><div className="no-step-list">{hr.withoutRecommendation.slice(0, 7).map(item => <button key={item.employee_id} onClick={() => { setSelectedId(item.employee_id); changeView('overview'); }}><span className="avatar option-avatar">{initials(item.full_name)}</span><span><strong>{item.full_name}</strong><small>{item.role} · {item.grade}</small></span><span className="gap-count">{item.gapCount} gaps</span></button>)}{!hr.withoutRecommendation.length && <div className="empty-small">У каждого сотрудника есть доступный шаг.</div>}</div></section></div>

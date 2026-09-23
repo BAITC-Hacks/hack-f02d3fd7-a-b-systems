@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { pool } from './db.js';
-import { hashPassword, requireRole, type AuthUser, type Role } from './auth.js';
+import { businessRoles, hashPassword, requireRole, type AuthUser, type BusinessRole, type Role } from './auth.js';
+import { auditAction, auditField } from './audit.js';
 
 export const adminRouter = Router();
 adminRouter.use(requireRole('ADMIN'));
 
-const fields = `id,username,email,full_name,role,employee_id,is_active,created_at,updated_at`;
+const fields = `id,username,email,full_name,role,business_role,employee_id,is_active,created_at,updated_at`;
 const validRoles = new Set<Role>(['ADMIN', 'HR', 'EMPLOYEE']);
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const usernamePattern = /^[a-zA-Z0-9._-]{3,40}$/;
@@ -17,16 +18,20 @@ function validate(data: Record<string, unknown>, creation: boolean) {
   const email = String(data.email ?? '').trim().toLowerCase();
   const fullName = String(data.full_name ?? '').trim();
   const role = data.role as Role;
+  const businessRole = (data.business_role ?? 'COMPANY_EMPLOYEE') as BusinessRole;
   const employeeId = data.employee_id ? String(data.employee_id).trim() : null;
   if (!usernamePattern.test(username)) throw fail('Логин: 3–40 символов, латиница, цифры, точка, дефис или подчёркивание');
   if (!emailPattern.test(email) || email.length > 254) throw fail('Укажите корректный email');
   if (fullName.length < 2 || fullName.length > 120) throw fail('Имя должно содержать 2–120 символов');
   if (!validRoles.has(role)) throw fail('Неизвестная роль');
-  if (role === 'EMPLOYEE' && !employeeId) throw fail('Для EMPLOYEE укажите профиль сотрудника');
+  if (!businessRoles.includes(businessRole)) throw fail('Неизвестная бизнес-роль');
+  if (businessRole === 'CONTACT_CLIENT' && (role !== 'EMPLOYEE' || employeeId))
+    throw fail('Внешний клиент не может иметь кадровый профиль или привилегированную роль');
+  if (role === 'EMPLOYEE' && !employeeId && businessRole !== 'CONTACT_CLIENT') throw fail('Для EMPLOYEE укажите профиль сотрудника');
   if (employeeId && employeeId.length > 80) throw fail('Некорректный ID сотрудника');
   if (creation && (typeof data.password !== 'string' || data.password.length < 10 || data.password.length > 200))
     throw fail('Пароль должен содержать 10–200 символов');
-  return { username, email, fullName, role, employeeId };
+  return { username, email, fullName, role, businessRole, employeeId };
 }
 
 function respondError(error: unknown, res: import('express').Response, next: import('express').NextFunction) {
@@ -61,14 +66,20 @@ adminRouter.get('/employees', async (_req, res, next) => {
 });
 
 adminRouter.post('/users', async (req, res, next) => {
+  const client = await pool.connect();
   try {
     const data = validate(req.body ?? {}, true);
-    const result = await pool.query(`INSERT INTO users(id,username,email,full_name,role,employee_id,password_hash,is_active)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING ${fields}`,
-    [randomUUID(), data.username, data.email, data.fullName, data.role, data.employeeId,
+    await client.query('BEGIN');
+    const result = await client.query(`INSERT INTO users(id,username,email,full_name,role,business_role,employee_id,password_hash,is_active)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING ${fields}`,
+    [randomUUID(), data.username, data.email, data.fullName, data.role, data.businessRole, data.employeeId,
       await hashPassword(req.body.password), req.body.is_active !== false]);
+    await client.query('INSERT INTO user_profiles(user_id) VALUES($1)',[result.rows[0].id]);
+    await auditAction(client,req,'USER_CREATED','user',result.rows[0].id,result.rows[0].id);
+    await client.query('COMMIT');
     res.status(201).json({ user: result.rows[0] });
-  } catch (error) { respondError(error, res, next); }
+  } catch (error) { await client.query('ROLLBACK'); respondError(error, res, next); }
+  finally { client.release(); }
 });
 
 adminRouter.patch('/users/:id', async (req, res, next) => {
@@ -86,10 +97,15 @@ adminRouter.patch('/users/:id', async (req, res, next) => {
       const count = await client.query<{ count: string }>("SELECT count(*)::text AS count FROM users WHERE role='ADMIN' AND is_active=true");
       if (Number(count.rows[0].count) <= 1) throw fail('Нельзя отключить или изменить роль последнего активного администратора');
     }
-    const result = await client.query(`UPDATE users SET username=$2,email=$3,full_name=$4,role=$5,employee_id=$6,
-      is_active=$7,updated_at=now() WHERE id=$1 RETURNING ${fields}`,
-    [old.id, data.username, data.email, data.fullName, data.role, data.employeeId, isActive]);
-    if (old.role !== data.role || old.employee_id !== data.employeeId || old.is_active !== isActive)
+    const result = await client.query(`UPDATE users SET username=$2,email=$3,full_name=$4,role=$5,business_role=$6,employee_id=$7,
+      is_active=$8,updated_at=now() WHERE id=$1 RETURNING ${fields}`,
+    [old.id, data.username, data.email, data.fullName, data.role, data.businessRole, data.employeeId, isActive]);
+    for (const [field,before,after] of [
+      ['username',old.username,data.username],['email',old.email,data.email],['full_name',old.full_name,data.fullName],
+      ['role',old.role,data.role],['business_role',old.business_role,data.businessRole],
+      ['employee_id',old.employee_id,data.employeeId],['is_active',old.is_active,isActive],
+    ] as [string,unknown,unknown][]) await auditField(client,req,'USER_UPDATED','user',old.id,old.id,field,before,after);
+    if (old.role !== data.role || old.business_role !== data.businessRole || old.employee_id !== data.employeeId || old.is_active !== isActive)
       await client.query('DELETE FROM user_sessions WHERE user_id=$1', [old.id]);
     await client.query('COMMIT');
     res.json({ user: result.rows[0] });
@@ -98,14 +114,19 @@ adminRouter.patch('/users/:id', async (req, res, next) => {
 });
 
 adminRouter.post('/users/:id/password', async (req, res, next) => {
+  const client = await pool.connect();
   try {
     const password = req.body?.password;
     if (typeof password !== 'string' || password.length < 10 || password.length > 200)
       throw fail('Пароль должен содержать 10–200 символов');
-    const result = await pool.query(`UPDATE users SET password_hash=$2,updated_at=now() WHERE id=$1 RETURNING id`,
+    await client.query('BEGIN');
+    const result = await client.query(`UPDATE users SET password_hash=$2,updated_at=now() WHERE id=$1 RETURNING id`,
       [req.params.id, await hashPassword(password)]);
     if (!result.rowCount) throw fail('Пользователь не найден', 404);
-    await pool.query('DELETE FROM user_sessions WHERE user_id=$1', [req.params.id]);
+    await client.query('DELETE FROM user_sessions WHERE user_id=$1', [req.params.id]);
+    await auditAction(client,req,'PASSWORD_RESET','user',req.params.id,String(req.params.id));
+    await client.query('COMMIT');
     res.json({ ok: true });
-  } catch (error) { respondError(error, res, next); }
+  } catch (error) { await client.query('ROLLBACK'); respondError(error, res, next); }
+  finally { client.release(); }
 });

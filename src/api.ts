@@ -1,7 +1,9 @@
 export type Role = 'ADMIN' | 'HR' | 'EMPLOYEE';
+export type BusinessRole = 'COMPANY_EMPLOYEE' | 'HR_SPECIALIST' | 'DEPARTMENT_MANAGER' |
+  'CONTACT_CLIENT' | 'CONTACT_OPERATOR' | 'CONTACT_SUPERVISOR';
 export type AuthUser = {
   id: string; username: string; email: string; full_name: string;
-  role: Role; employee_id: string | null; is_active: boolean;
+  role: Role; business_role: BusinessRole; employee_id: string | null; is_active: boolean; has_avatar: boolean;
 };
 
 export async function api<T>(url: string, options?: RequestInit): Promise<T> {
